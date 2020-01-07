@@ -849,7 +849,12 @@ def build_create_bq_table_task(payload, default_gcp_project_id, default_bq_datas
     # Add the parameters inside the current payload to save them down the process.
     #
     with open(payload["ddl_file"], "r") as f:
-        payload_ddl = json.load(f)
+        try:
+            payload_ddl = json.load(f)
+        except Exception as ex:
+            print("\nError while parsing DDL JSON file : {}".format(f.name))
+            print(ex)
+            return False
 
         payload["bq_table_description"] = payload_ddl["bq_table_description"]
         payload["bq_table_schema"] = payload_ddl["bq_table_schema"]
@@ -1033,9 +1038,14 @@ def process(args):
 
     # Open JSON configuration file
     #
-    json_file = open(input_filename, "r")
-    json_payload = json.load(json_file)
-    json_file.close()
+    try:
+        json_file = open(input_filename, "r")
+        json_payload = json.load(json_file)
+        json_file.close()
+    except Exception as ex:
+        print("Error while parsing JSON file : {}".format(input_filename))
+        print(ex)
+        return False
 
     # Get path of filename
     #
@@ -1174,6 +1184,9 @@ with airflow.DAG(
         elif task_type == "create_gbq_table":
             generated_code = build_create_bq_table_task(
                 item, default_gcp_project_id, default_bq_dataset, global_path)
+
+            if generated_code is False:
+                return False
 
         elif task_type == "vm_launcher":
             generated_code = build_vm_launcher_task(item, default_gcp_project_id)
@@ -1333,10 +1346,13 @@ with airflow.DAG(
 
     # Get configuration
     #
+    print()
+    print("Get J.A.R.V.I.S configuration ...")
     jarvis_configuration = jarvis_config.get_jarvis_configuration_file()
 
     # Get firebase user
     #
+    print("Get user information ...")
     firebase_user = jarvis_auth.get_refreshed_firebase_user(jarvis_configuration)
 
     # Get list of project profiles open to the user and ask him to pick one
@@ -1361,6 +1377,8 @@ with airflow.DAG(
     #
     try:
 
+        print("Calling J.A.R.V.I.S API ...")
+
         url = jarvis_configuration["jarvis_api_endpoint"] + "dag-generator-v2"
         payload = {
             "payload": {
@@ -1379,8 +1397,11 @@ with airflow.DAG(
 
         r = requests.put(url, headers=headers, data=json.dumps(payload))
 
+        print("API http status : {}".format(r.status_code))
+
         if r.status_code != 200:
             print("\nError : %s\n" % str(r.content, "utf-8"))
+            print(r.json())
             return False
         else:
             response = r.json()

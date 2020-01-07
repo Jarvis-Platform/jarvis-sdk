@@ -110,7 +110,8 @@ def process_configuration_file(input_conf_file):
         with open(input_conf_file, "r") as f:
             read_configuration = json.load(f)
     except Exception as ex:
-        print("Error while parsing configuration file.")
+        print("Error while parsing JSON configuration file : {}".format(input_conf_file))
+        print(ex)
         return False
 
     # Get global path of the configuration file
@@ -158,12 +159,23 @@ def process_configuration_file(input_conf_file):
 
                     # Process DDL file
                     # mandatory
+                    #
                     ddl_file = configuration_absolute_pathname + table["ddl_file"]
                     print("Processing DDL file : {}".format(ddl_file))
                     with open(ddl_file, "r") as f:
+                        try:
+                            # Try to parse the file as JSON to make sure there is no syntax error
+                            #
+                            test_ddl_file = json.load(f)
+                        except Exception as ex:
+                            print("Error while parsing DDL file : {}".format(ddl_file))
+                            print(ex)
+                            return False
+
                         read_ddl_file = f.read()
                         read_ddl_file = bytes(read_ddl_file, "utf-8")
                         table["ddl_infos"] = str(base64.b64encode(read_ddl_file), "utf-8")
+                        
 
                     # Process Markdown file
                     # optional

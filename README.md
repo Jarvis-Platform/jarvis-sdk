@@ -2,6 +2,11 @@
 
 ## Changelog
 
+### Release 0.0.16 : 2020-01-10
+
+* Removed ASCII art
+* Storage-to-tables : check for JSON syntax for DDL files as well
+
 ### Release 0.0.15 : 2019-xx-xx
 
 * Table-To-Table : GBQ table schema will be preserved upon WRITE_TRUNCATE
