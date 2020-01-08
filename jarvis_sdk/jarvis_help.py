@@ -38,11 +38,6 @@ Google Cloud Platform Cloud Functions deployment
 Please type : jarvis deploy gcp-cloud-function help
 
 
-Generate and deploy DAG
------------------------
-Please type : jarvis dag-generator [dag-description.json]
-
-
 Encrypt Message of file content
 -------------------------------
 Will encrypt data using Jarvis Public Key.

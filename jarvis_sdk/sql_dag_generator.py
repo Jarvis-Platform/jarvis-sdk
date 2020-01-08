@@ -1021,35 +1021,29 @@ def build_vm_launcher_task(payload, gcp_project_id):
     return output_payload
 
 
-def process(args):
+def process(configuration_file):
 
     # Infos
     #
     print("Generating and deploying DAG ...")
 
-    # Retrieving arguments
-    #
-    input_filename = args.arguments[0]
-    print("File to process      : {}".format(input_filename))
-    if len(args.arguments) >= 2:
-        environment = args.arguments[1]
-    else:
-        environment = "PROD"
+    print("File to process      : {}".format(configuration_file))
+    environment = "PROD"
 
     # Open JSON configuration file
     #
     try:
-        json_file = open(input_filename, "r")
+        json_file = open(configuration_file, "r")
         json_payload = json.load(json_file)
         json_file.close()
     except Exception as ex:
-        print("Error while parsing JSON file : {}".format(input_filename))
+        print("Error while parsing JSON file : {}".format(configuration_file))
         print(ex)
         return False
 
     # Get path of filename
     #
-    global_path = jarvis_misc.get_path_from_file(input_filename)
+    global_path = jarvis_misc.get_path_from_file(configuration_file)
 
     # Process environment
     #
@@ -1396,8 +1390,6 @@ with airflow.DAG(
             "Authorization": "Bearer " + firebase_user["idToken"]}
 
         r = requests.put(url, headers=headers, data=json.dumps(payload))
-
-        print("API http status : {}".format(r.status_code))
 
         if r.status_code != 200:
             print("\nError : %s\n" % str(r.content, "utf-8"))

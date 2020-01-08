@@ -15,6 +15,7 @@ import ctypes
 from jarvis_sdk import jarvis_config
 from jarvis_sdk import jarvis_auth
 from jarvis_sdk import jarvis_misc
+from jarvis_sdk import sql_dag_generator
 
 
 def display_configuration_help(command, jarvis_configuration, firebase_user):
@@ -101,7 +102,7 @@ def process_configuration_file(input_conf_file):
     #
     if os.path.isfile(input_conf_file) is False:
         print("File \"%s\" does not exists." % input_conf_file)
-        return False
+        return None
 
     # Read file and parse it as JSON
     #
@@ -112,7 +113,7 @@ def process_configuration_file(input_conf_file):
     except Exception as ex:
         print("Error while parsing JSON configuration file : {}".format(input_conf_file))
         print(ex)
-        return False
+        return None
 
     # Get global path of the configuration file
     #
@@ -123,7 +124,7 @@ def process_configuration_file(input_conf_file):
     if read_configuration["configuration_type"] == "table-to-storage":
         sql_query = process_sql_query(read_configuration, input_conf_file)
         if sql_query is None:
-            return False
+            return None
 
         read_configuration["sql"] = sql_query
 
@@ -170,7 +171,7 @@ def process_configuration_file(input_conf_file):
                         except Exception as ex:
                             print("Error while parsing DDL file : {}".format(ddl_file))
                             print(ex)
-                            return False
+                            return None
 
                         read_ddl_file = f.read()
                         read_ddl_file = bytes(read_ddl_file, "utf-8")
@@ -191,7 +192,7 @@ def process_configuration_file(input_conf_file):
 
         except Exception as ex:
             print("Error while processing destinations / tables : {}".format(ex))
-            return False
+            return None
 
     return read_configuration
 
@@ -373,6 +374,25 @@ def create_configuration(configuration_type, output_file, jarvis_configuration, 
         return False
 
 
+def check_table_to_table(input_configuration):
+
+    # Process configuration file
+    #
+    read_configuration = process_configuration_file(input_configuration)
+    if read_configuration is None:
+        return False
+
+    try:
+        if read_configuration["configuration_type"] == "table-to-table":
+            return True
+    except Exception as ex:
+        print("Error while parsing configuration file.")
+        print(ex)
+
+    return False
+
+
+
 def process(args):
 
     print("Jarvis Configuration Manager.")
@@ -392,6 +412,14 @@ def process(args):
                 if args.arguments[1] == "help":
                     return display_configuration_help(args.command, jarvis_configuration, firebase_user)
                 else:
+
+                    # Special check for TABLE-TO-TABLE (DAG Generator) configuration
+                    # If so, we need to process the confgiguration file
+                    #
+                    if check_table_to_table(args.arguments[1]) is True:
+                        print("Processing table-to-table type configuration ...")
+                        sql_dag_generator.process(args.arguments[1])
+                        return True
 
                     # First, check if the configuration is valid
                     #

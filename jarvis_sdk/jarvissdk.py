@@ -86,12 +86,6 @@ def main():
                 jarvis_configuration_manager.process(args)
             if (args.arguments)[0] == "gcp-cloud-function":
                 jarvis_gcp_cf_manager.process(args)
-
-    elif args.command == "dag-generator":
-        if len(args.arguments) > 0:
-            sql_dag_generator.process(args)
-        else:
-            print("Please provide your DAG configuration file.\n")
     
     elif args.command == "help":
         jarvis_help.display_help()
