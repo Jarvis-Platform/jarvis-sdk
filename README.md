@@ -3,10 +3,12 @@
 ## Changelog
 
 
-### Release 0.0.16 : 2020-01-10
+### Release 1.0.0 : 2020-02-01
 
 * Removed ASCII art
 * Storage-to-tables : check for JSON syntax for DDL files as well
+* Add JARVIS SDK versioning
+
 
 ### Release 0.0.15 : 2019-xx-xx
 

@@ -96,7 +96,7 @@ def display_gcp_cf_deploy(project_profile, jarvis_configuration, firebase_user, 
         return False
 
 
-def process(args):
+def process(args, jarvis_sdk_version):
 
     print("Jarvis Configuration Manager.")
 

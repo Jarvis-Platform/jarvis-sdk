@@ -18,7 +18,7 @@ from jarvis_sdk import jarvis_misc
 from jarvis_sdk import sql_dag_generator
 
 
-def display_configuration_help(command, jarvis_configuration, firebase_user):
+def display_configuration_help(command, jarvis_configuration, firebase_user, jarvis_sdk_version):
 
     try:
 
@@ -26,12 +26,14 @@ def display_configuration_help(command, jarvis_configuration, firebase_user):
         #
         uid = firebase_user["userId"]
 
-        url = jarvis_configuration["jarvis_api_endpoint"] + "configuration/v2/help"
+        url = jarvis_configuration["jarvis_api_endpoint"] + \
+            "configuration/v2/help"
 
         data = {
             "payload": {
-                "resource_type" : "help",
-                "resource": command + "_help"
+                "resource_type": "help",
+                "resource": command + "_help",
+                "jarvis_sdk_version": jarvis_sdk_version
             }
         }
 
@@ -79,7 +81,8 @@ def process_sql_query(read_configuration, input_conf_file):
     if (filepath is None) or (filepath == ""):
         sql_full_filename = read_configuration["sql_file"]
     else:
-        sql_full_filename = filepath + path_element + read_configuration["sql_file"]
+        sql_full_filename = filepath + path_element + \
+            read_configuration["sql_file"]
 
     print("SQL file path : {}".format(sql_full_filename))
 
@@ -111,13 +114,15 @@ def process_configuration_file(input_conf_file):
         with open(input_conf_file, "r") as f:
             read_configuration = json.load(f)
     except Exception as ex:
-        print("Error while parsing JSON configuration file : {}".format(input_conf_file))
+        print("Error while parsing JSON configuration file : {}".format(
+            input_conf_file))
         print(ex)
         return None
 
     # Get global path of the configuration file
     #
-    configuration_absolute_pathname = jarvis_misc.get_path_from_file(input_conf_file)
+    configuration_absolute_pathname = jarvis_misc.get_path_from_file(
+        input_conf_file)
 
     # Special processing for "table-to-storage"
     #
@@ -135,18 +140,19 @@ def process_configuration_file(input_conf_file):
         # Process global Markdown file
         #
         try:
-            doc_md = configuration_absolute_pathname + read_configuration["doc_md"]
+            doc_md = configuration_absolute_pathname + \
+                read_configuration["doc_md"]
             print("Global Markdown file provided : {}".format(doc_md))
             try:
                 with open(doc_md, "r") as f:
                     read_md_file = f.read()
                     read_md_file = bytes(read_md_file, "utf-8")
-                    read_configuration["doc_md"] = str(base64.b64encode(read_md_file), "utf-8")
+                    read_configuration["doc_md"] = str(
+                        base64.b64encode(read_md_file), "utf-8")
 
             except Exception as ex:
                 print("Error while reading Markdown file : " + ex)
                 return None
-
 
         except KeyError:
             print("No global Markdown file provided. Continuing ...")
@@ -161,7 +167,8 @@ def process_configuration_file(input_conf_file):
                     # Process DDL file
                     # mandatory
                     #
-                    ddl_file = configuration_absolute_pathname + table["ddl_file"]
+                    ddl_file = configuration_absolute_pathname + \
+                        table["ddl_file"]
                     print("Processing DDL file : {}".format(ddl_file))
                     with open(ddl_file, "r") as f:
                         try:
@@ -169,26 +176,30 @@ def process_configuration_file(input_conf_file):
                             #
                             test_ddl_file = json.load(f)
                         except Exception as ex:
-                            print("Error while parsing DDL file : {}".format(ddl_file))
+                            print(
+                                "Error while parsing DDL file : {}".format(ddl_file))
                             print(ex)
                             return None
 
                         read_ddl_file = f.read()
                         read_ddl_file = bytes(read_ddl_file, "utf-8")
-                        table["ddl_infos"] = str(base64.b64encode(read_ddl_file), "utf-8")
-                        
+                        table["ddl_infos"] = str(
+                            base64.b64encode(read_ddl_file), "utf-8")
 
                     # Process Markdown file
                     # optional
                     try:
-                        doc_md = configuration_absolute_pathname + table["doc_md"]
+                        doc_md = configuration_absolute_pathname + \
+                            table["doc_md"]
                         print("Processing table Markdown file : {}".format(doc_md))
                         with open(doc_md, "r") as f:
                             read_doc_md = f.read()
                             read_doc_md = bytes(read_doc_md, "utf-8")
-                            table["doc_md"] = str(base64.b64encode(read_doc_md), "utf-8")
+                            table["doc_md"] = str(
+                                base64.b64encode(read_doc_md), "utf-8")
                     except Exception as ex:
-                        print("Cannot process table Markdown file. Continuing ... : {}".format(ex))
+                        print(
+                            "Cannot process table Markdown file. Continuing ... : {}".format(ex))
 
         except Exception as ex:
             print("Error while processing destinations / tables : {}".format(ex))
@@ -197,7 +208,7 @@ def process_configuration_file(input_conf_file):
     return read_configuration
 
 
-def check_configuration(input_conf_file=None, jarvis_configuration=None, firebase_user=None):
+def check_configuration(input_conf_file=None, jarvis_configuration=None, firebase_user=None, jarvis_sdk_version=None):
 
     # Process configuration file
     #
@@ -210,9 +221,10 @@ def check_configuration(input_conf_file=None, jarvis_configuration=None, firebas
         url = jarvis_configuration["jarvis_api_endpoint"] + "configuration/v2"
         data = {
             "payload": {
-                "resource_type" : "check-configuration",
+                "resource_type": "check-configuration",
                 "resource": read_configuration,
-                "uid": firebase_user["userId"]
+                "uid": firebase_user["userId"],
+                "jarvis_sdk_version": jarvis_sdk_version
             }
         }
         headers = {
@@ -240,7 +252,7 @@ def check_configuration(input_conf_file=None, jarvis_configuration=None, firebas
         return False
 
 
-def get_project_profile_from_configuration(input_conf_file=None, jarvis_configuration=None, firebase_user=None):
+def get_project_profile_from_configuration(input_conf_file=None, jarvis_configuration=None, firebase_user=None, jarvis_sdk_version=None):
 
     # Process configuration file
     #
@@ -253,9 +265,10 @@ def get_project_profile_from_configuration(input_conf_file=None, jarvis_configur
         url = jarvis_configuration["jarvis_api_endpoint"] + "configuration/v2"
         data = {
             "payload": {
-                "resource_type" : "get-gcp-project-id",
+                "resource_type": "get-gcp-project-id",
                 "resource": read_configuration,
-                "uid": firebase_user["userId"]
+                "uid": firebase_user["userId"],
+                "jarvis_sdk_version": jarvis_sdk_version
             }
         }
         headers = {
@@ -284,7 +297,7 @@ def get_project_profile_from_configuration(input_conf_file=None, jarvis_configur
         return False
 
 
-def deploy_configuration(input_conf_file, project_profile, jarvis_configuration, firebase_user, no_gcp_cf_deploy):
+def deploy_configuration(input_conf_file, project_profile, jarvis_configuration, firebase_user, no_gcp_cf_deploy, jarvis_sdk_version):
 
     # Process configuration file
     #
@@ -308,7 +321,8 @@ def deploy_configuration(input_conf_file, project_profile, jarvis_configuration,
                 "resource": read_configuration,
                 "project_profile": project_profile,
                 "uid": firebase_user["userId"],
-                "deploy_cf" : not no_gcp_cf_deploy
+                "deploy_cf": not no_gcp_cf_deploy,
+                "jarvis_sdk_version": jarvis_sdk_version
             }
         }
         headers = {
@@ -332,7 +346,7 @@ def deploy_configuration(input_conf_file, project_profile, jarvis_configuration,
         return False
 
 
-def create_configuration(configuration_type, output_file, jarvis_configuration, firebase_user):
+def create_configuration(configuration_type, output_file, jarvis_configuration, firebase_user, jarvis_sdk_version):
 
     # Some information
     #
@@ -346,9 +360,10 @@ def create_configuration(configuration_type, output_file, jarvis_configuration, 
         url = jarvis_configuration["jarvis_api_endpoint"] + "configuration/v2"
         data = {
             "payload": {
-                "resource_type" : "configuration-type",
+                "resource_type": "configuration-type",
                 "resource": configuration_type,
-                "uid": firebase_user["userId"]
+                "uid": firebase_user["userId"],
+                "jarvis_sdk_version": jarvis_sdk_version
             }
         }
         headers = {
@@ -363,7 +378,8 @@ def create_configuration(configuration_type, output_file, jarvis_configuration, 
             return False
         else:
             response = r.json()
-            config = str(base64.b64decode(response["payload"]["content"]), "utf-8")
+            config = str(base64.b64decode(
+                response["payload"]["content"]), "utf-8")
             with open(output_file, mode='w') as file:
                 file.write(config)
             return True
@@ -392,8 +408,7 @@ def check_table_to_table(input_configuration):
     return False
 
 
-
-def process(args):
+def process(args, jarvis_sdk_version):
 
     print("Jarvis Configuration Manager.")
 
@@ -410,11 +425,11 @@ def process(args):
         if len(args.arguments) >= 2:
             if args.arguments[1] is not None:
                 if args.arguments[1] == "help":
-                    return display_configuration_help(args.command, jarvis_configuration, firebase_user)
+                    return display_configuration_help(args.command, jarvis_configuration, firebase_user, jarvis_sdk_version)
                 else:
 
                     # Special check for TABLE-TO-TABLE (DAG Generator) configuration
-                    # If so, we need to process the confgiguration file
+                    # If so, we need to process the configuration file
                     #
                     if check_table_to_table(args.arguments[1]) is True:
                         print("Processing table-to-table type configuration ...")
@@ -423,36 +438,39 @@ def process(args):
 
                     # First, check if the configuration is valid
                     #
-                    if check_configuration(input_conf_file=args.arguments[1], jarvis_configuration=jarvis_configuration, firebase_user=firebase_user) is False:
+                    if check_configuration(input_conf_file=args.arguments[1], jarvis_configuration=jarvis_configuration, firebase_user=firebase_user, jarvis_sdk_version=jarvis_sdk_version) is False:
                         return False
 
                     # Check if GCP Project ID is present
                     #
-                    project_profile = get_project_profile_from_configuration(input_conf_file=args.arguments[1], jarvis_configuration=jarvis_configuration, firebase_user=firebase_user)
+                    project_profile = get_project_profile_from_configuration(
+                        input_conf_file=args.arguments[1], jarvis_configuration=jarvis_configuration, firebase_user=firebase_user, jarvis_sdk_version=jarvis_sdk_version)
                     if (project_profile is None) or (project_profile == ""):
 
                         # Get list of project profiles open to the user and ask him to pick one
                         #
-                        ret_code, project_profile = jarvis_misc.choose_project_profiles(jarvis_configuration, firebase_user)
+                        ret_code, project_profile = jarvis_misc.choose_project_profiles(
+                            jarvis_configuration, firebase_user, jarvis_sdk_version)
                         if ret_code is False:
                             return False
                     else:
-                        print("\nProject profile used : {}\n".format(project_profile))
+                        print("\nProject profile used : {}\n".format(
+                            project_profile))
 
-                    return deploy_configuration(args.arguments[1], project_profile, jarvis_configuration, firebase_user, args.no_gcp_cf_deploy)
+                    return deploy_configuration(args.arguments[1], project_profile, jarvis_configuration, firebase_user, args.no_gcp_cf_deploy, jarvis_sdk_version)
             else:
                 print("Argument unknown." % args.arguments[1])
                 return False
         else:
-            return display_configuration_help(args.command, jarvis_configuration, firebase_user)
+            return display_configuration_help(args.command, jarvis_configuration, firebase_user, jarvis_sdk_version)
 
     elif args.command == "create":
         if len(args.arguments) >= 2:
             if args.arguments[1] is not None:
                 if args.arguments[1] == "help":
-                    return display_configuration_help(args.command, jarvis_configuration, firebase_user)
+                    return display_configuration_help(args.command, jarvis_configuration, firebase_user, jarvis_sdk_version)
                 else:
-                    
+
                     # retrieve output_filename
                     #
                     try:
@@ -460,24 +478,24 @@ def process(args):
                     except Exception as ex:
                         output_filename = args.arguments[1] + ".json"
 
-                    return create_configuration(args.arguments[1], output_filename, jarvis_configuration, firebase_user)
+                    return create_configuration(args.arguments[1], output_filename, jarvis_configuration, firebase_user, jarvis_sdk_version)
             else:
                 print("Argument unknown." % args.arguments[1])
                 return False
         else:
-            return display_configuration_help(args.command, jarvis_configuration, firebase_user)
+            return display_configuration_help(args.command, jarvis_configuration, firebase_user, jarvis_sdk_version)
 
-    elif args.command == "check":   
+    elif args.command == "check":
         if len(args.arguments) >= 2:
             if args.arguments[1] is not None:
                 if args.arguments[1] == "help":
-                    return display_configuration_help(args.command, jarvis_configuration, firebase_user)
+                    return display_configuration_help(args.command, jarvis_configuration, firebase_user, jarvis_sdk_version)
                 else:
-                    return check_configuration(input_conf_file=args.arguments[1], jarvis_configuration=jarvis_configuration, firebase_user=firebase_user)
+                    return check_configuration(input_conf_file=args.arguments[1], jarvis_configuration=jarvis_configuration, firebase_user=firebase_user, jarvis_sdk_version=jarvis_sdk_version)
             else:
                 print("Argument unknown." % args.arguments[1])
                 return False
         else:
-            return display_configuration_help(args.command, jarvis_configuration, firebase_user)
+            return display_configuration_help(args.command, jarvis_configuration, firebase_user, jarvis_sdk_version)
 
     return True

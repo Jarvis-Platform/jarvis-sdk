@@ -24,7 +24,7 @@ warnings.filterwarnings(
 
 # Globals
 #
-JARVIS_SDK_VERSION="0.0.16"
+JARVIS_SDK_VERSION="1.0.0"
 
 
 
@@ -73,19 +73,19 @@ def main():
     elif args.command == "create":
         if len(args.arguments) > 0:
             if (args.arguments)[0] == "configuration":
-                jarvis_configuration_manager.process(args)
+                jarvis_configuration_manager.process(args, jarvis_sdk_version=JARVIS_SDK_VERSION)
 
     elif args.command == "check":
         if len(args.arguments) > 0:
             if (args.arguments)[0] == "configuration":
-                jarvis_configuration_manager.process(args)
+                jarvis_configuration_manager.process(args, jarvis_sdk_version=JARVIS_SDK_VERSION)
 
     elif args.command == "deploy":
         if len(args.arguments) > 0:
             if (args.arguments)[0] == "configuration":
-                jarvis_configuration_manager.process(args)
+                jarvis_configuration_manager.process(args, jarvis_sdk_version=JARVIS_SDK_VERSION)
             if (args.arguments)[0] == "gcp-cloud-function":
-                jarvis_gcp_cf_manager.process(args)
+                jarvis_gcp_cf_manager.process(args, jarvis_sdk_version=JARVIS_SDK_VERSION)
     
     elif args.command == "help":
         jarvis_help.display_help()

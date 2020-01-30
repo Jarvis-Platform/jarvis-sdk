@@ -53,7 +53,12 @@ def get_refreshed_firebase_user(read_configuration):
     if firebase_user is not None:
         try:
             firebase_user = auth.refresh(firebase_user['refreshToken'])
+
+            read_configuration["firebase_user"]["idToken"] = firebase_user["idToken"]
+            jarvis_config.set_jarvis_configuration_file(read_configuration)
+
             return firebase_user
+
         except Exception as ex:
             print("Error while refreshing user's access token : %s" % ex)
             return None

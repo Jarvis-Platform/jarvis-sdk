@@ -16,7 +16,7 @@ def check_platform(print_infos=False):
     return platform.system().strip()
 
 
-def get_project_profiles(jarvis_configuration, firebase_user):
+def get_project_profiles(jarvis_configuration, firebase_user, jarvis_sdk_version=jarvis_sdk_version):
 
     # Call API to retrieve Project Profiles accessible by the user
     #
@@ -25,7 +25,8 @@ def get_project_profiles(jarvis_configuration, firebase_user):
         url = jarvis_configuration["jarvis_api_endpoint"] + "project-profile"
         data = {
             "payload": {
-                "uid": firebase_user["userId"]
+                "uid": firebase_user["userId"],
+                "jarvis_sdk_version" : jarvis_sdk_version
             }
         }
         headers = {
@@ -46,9 +47,9 @@ def get_project_profiles(jarvis_configuration, firebase_user):
         print(ex)
         return False, None
 
-def choose_project_profiles(jarvis_configuration, firebase_user):
+def choose_project_profiles(jarvis_configuration, firebase_user, jarvis_sdk_version):
 
-    ret_code, payload = get_project_profiles(jarvis_configuration, firebase_user)
+    ret_code, payload = get_project_profiles(jarvis_configuration, firebase_user, jarvis_sdk_version)
 
     if ret_code is False:
         return False, None
