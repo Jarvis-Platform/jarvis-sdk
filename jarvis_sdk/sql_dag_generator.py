@@ -1341,7 +1341,7 @@ with airflow.DAG(
     # Get configuration
     #
     print()
-    print("Get J.A.R.V.I.S configuration ...")
+    print("Get JARVIS configuration ...")
     jarvis_configuration = jarvis_config.get_jarvis_configuration_file()
 
     # Get firebase user
@@ -1354,6 +1354,60 @@ with airflow.DAG(
     ret_code, project_profile = jarvis_misc.choose_project_profiles(jarvis_configuration, firebase_user)
     if ret_code is False:
         return False
+
+    # Check if a DAG with the same name is already deployed
+    #
+    try:
+
+        print("Calling JARVIS API ...")
+
+        url = jarvis_configuration["jarvis_api_endpoint"] + "dag-generator-v2"
+        payload = {
+            "payload": {
+                "resource": "check_dag_exists",
+                "dag_file" : {
+                    "name": dag_name + ".py"
+                },
+                "project_profile": project_profile
+            }
+        }
+        headers = {
+            "Content-type": "application/json",
+            "Authorization": "Bearer " + firebase_user["idToken"]}
+
+        r = requests.put(url, headers=headers, data=json.dumps(payload), verify=jarvis_configuration["perform_ssl_verification"])
+
+        if r.status_code == 200:
+            response = r.json()
+            print(response["payload"]["message"])
+
+            # DAG file already exists
+            # We need to ask the user if everything is OK
+            #
+            while True:
+                print("The DAG {} already exists, do you want to overwrite it y/n ? : ".format(dag_name), end='', flush=True)
+                user_value = input()
+
+                if user_value == "y":
+                    break
+                elif user_value == "n":
+                    return True
+                else:
+                    continue
+
+        elif r.status_code == 404:
+            # Everything is OK
+            print(str(r.content, "utf-8"))
+        else:
+            print("\nError : %s\n" % str(r.content, "utf-8"))
+            print(r.json())
+            return False
+
+    except Exception as ex:
+        print("Error while trying to contact Jarvis API ...")
+        print(ex)
+        return False
+
 
     # Process data
     #
@@ -1371,7 +1425,7 @@ with airflow.DAG(
     #
     try:
 
-        print("Calling J.A.R.V.I.S API ...")
+        print("Calling JARVIS API ...")
 
         url = jarvis_configuration["jarvis_api_endpoint"] + "dag-generator-v2"
         payload = {
@@ -1389,7 +1443,7 @@ with airflow.DAG(
             "Content-type": "application/json",
             "Authorization": "Bearer " + firebase_user["idToken"]}
 
-        r = requests.put(url, headers=headers, data=json.dumps(payload))
+        r = requests.put(url, headers=headers, data=json.dumps(payload), verify=jarvis_configuration["perform_ssl_verification"])
 
         if r.status_code != 200:
             print("\nError : %s\n" % str(r.content, "utf-8"))

@@ -2,6 +2,14 @@
 
 ## Changelog
 
+### Release 1.1.0 : 2020-02-19
+
+* Added TTT DAG file checking upon deployment. The user must validate if he wants to overwrite TTT DAG.
+* Removed Project selection validation.
+
+### Release 1.0.1 : 2020-02-10
+
+* Fixed seek() error on file read
 
 ### Release 0.0.16 : 2020-01-10
 

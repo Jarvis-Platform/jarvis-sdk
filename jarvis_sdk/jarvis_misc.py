@@ -32,7 +32,7 @@ def get_project_profiles(jarvis_configuration, firebase_user):
             "Content-type": "application/json",
             "Authorization": "Bearer " + firebase_user["idToken"]}
 
-        r = requests.post(url, headers=headers, data=json.dumps(data))
+        r = requests.post(url, headers=headers, data=json.dumps(data), verify=jarvis_configuration["perform_ssl_verification"])
 
         if r.status_code != 200:
             print("\nError : %s\n" % str(r.content, "utf-8"))
@@ -85,21 +85,9 @@ def choose_project_profiles(jarvis_configuration, firebase_user):
     #
     choice = payload[user_value - 1]
     print("\nYou choosed to use profile : {}\n".format(choice))
-    while True:
-        print("Do you confirm y/n, press enter for \"y\" : ", end='', flush=True)
-        user_value = input()
 
-        if len(user_value) == 0:
-            user_value = "y"
+    return True, choice
 
-        if user_value == "y":
-            return True, choice
-
-        elif user_value == "n":
-
-            return False, None
-
-        continue
 
 def get_path_from_file(input_file):
 

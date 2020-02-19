@@ -40,7 +40,7 @@ def display_configuration_help(command, jarvis_configuration, firebase_user):
             "Authorization": "Bearer " + firebase_user["idToken"]
         }
 
-        r = requests.post(url, headers=headers, data=json.dumps(data))
+        r = requests.post(url, headers=headers, data=json.dumps(data), verify=jarvis_configuration["perform_ssl_verification"])
 
         if r.status_code != 200:
             print("\nError : %s\n" % str(r.content, "utf-8"))
@@ -173,7 +173,9 @@ def process_configuration_file(input_conf_file):
                             print(ex)
                             return None
 
+                        f.seek(0)
                         read_ddl_file = f.read()
+
                         read_ddl_file = bytes(read_ddl_file, "utf-8")
                         table["ddl_infos"] = str(base64.b64encode(read_ddl_file), "utf-8")
                         
@@ -219,7 +221,7 @@ def check_configuration(input_conf_file=None, jarvis_configuration=None, firebas
             "Content-type": "application/json",
             "Authorization": "Bearer " + firebase_user["idToken"]}
 
-        r = requests.post(url, headers=headers, data=json.dumps(data))
+        r = requests.post(url, headers=headers, data=json.dumps(data), cert=jarvis_configuration["client_ssl_certificate"], verify=jarvis_configuration["perform_ssl_verification"])
 
         if r.status_code == 404:
             # Special case : if the configuration JSON Schema is not found, we let pass until we can complete the JSON Schema database
@@ -262,7 +264,7 @@ def get_project_profile_from_configuration(input_conf_file=None, jarvis_configur
             "Content-type": "application/json",
             "Authorization": "Bearer " + firebase_user["idToken"]}
 
-        r = requests.post(url, headers=headers, data=json.dumps(data))
+        r = requests.post(url, headers=headers, data=json.dumps(data), verify=jarvis_configuration["perform_ssl_verification"])
 
         if r.status_code == 404:
             # Not found
@@ -316,7 +318,7 @@ def deploy_configuration(input_conf_file, project_profile, jarvis_configuration,
             "Authorization": "Bearer " + firebase_user["idToken"
                                                        ]}
 
-        r = requests.put(url, headers=headers, data=json.dumps(data))
+        r = requests.put(url, headers=headers, data=json.dumps(data), verify=jarvis_configuration["perform_ssl_verification"])
 
         if r.status_code != 200:
             print("\nError : %s\n" % str(r.content, "utf-8"))
@@ -356,7 +358,7 @@ def create_configuration(configuration_type, output_file, jarvis_configuration, 
             "Authorization": "Bearer " + firebase_user["idToken"
                                                        ]}
 
-        r = requests.post(url, headers=headers, data=json.dumps(data))
+        r = requests.post(url, headers=headers, data=json.dumps(data), verify=jarvis_configuration["perform_ssl_verification"])
 
         if r.status_code != 200:
             print("\nError : %s\n" % str(r.content, "utf-8"))

@@ -41,7 +41,7 @@ def display_gcp_cf_deploy_help(jarvis_configuration, firebase_user):
             "Authorization": "Bearer " + firebase_user["idToken"]
         }
 
-        r = requests.post(url, headers=headers, data=json.dumps(data))
+        r = requests.post(url, headers=headers, data=json.dumps(data), verify=jarvis_configuration["perform_ssl_verification"])
 
         if r.status_code != 200:
             # print(r.headers)
@@ -80,7 +80,7 @@ def display_gcp_cf_deploy(project_profile, jarvis_configuration, firebase_user, 
             "Content-type": "application/json",
             "Authorization": "Bearer " + firebase_user["idToken"]}
 
-        r = requests.put(url, headers=headers, data=json.dumps(data))
+        r = requests.put(url, headers=headers, data=json.dumps(data), verify=jarvis_configuration["perform_ssl_verification"])
 
         if r.status_code != 200:
             print("\nError : %s\n" % str(r.content, "utf-8"))
