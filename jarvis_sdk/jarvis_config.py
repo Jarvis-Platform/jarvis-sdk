@@ -108,6 +108,25 @@ def get_jarvis_configuration_file(create_if_not_exists=False):
         print("Error during configuration reading/parsing.")
         print(ex)
 
+    # Check for non-present values
+    #
+    if "perform_ssl_verification" not in read_configuration:
+        read_configuration["perform_ssl_verification"] = False
+
+    if "client_ssl_certificate" not in read_configuration:
+        read_configuration["client_ssl_certificate"] = ""
+
+    # Make sur those variables are set
+    #
+    # SSL_CERT_FILE
+    #
+    if read_configuration["client_ssl_certificate"] is not None:
+        os.environ["SSL_CERT_FILE"] = read_configuration["client_ssl_certificate"]
+    else:
+        del os.environ["SSL_CERT_FILE"]
+
+    print("SSL Cert. : {}".format(os.environ["SSL_CERT_FILE"]))
+
     return read_configuration
 
 
@@ -276,6 +295,40 @@ def process_configuration_file(host_system):
         else:
             read_configuration[key] = user_value
 
+    # Process SSL Bypass
+    #
+    while True:
+        print("Do you want to perform the SSL verification ? y/n. Press enter for \"y\" : ", end='', flush=True)
+        user_value = input()
+
+        if len(user_value) == 0:
+            user_value = "y"
+
+        if user_value == "y":
+            read_configuration["perform_ssl_verification"] = True
+            break
+        elif user_value == "n":
+            read_configuration["perform_ssl_verification"] = False
+            break
+
+    # Process Client SSL certificate
+    #
+    while True:
+        print("Do you want to specify a custom Client SSL Certificate ? y/n. Press enter for \"n\" : ", end='', flush=True)
+        user_value = input()
+
+        if len(user_value) == 0:
+            user_value = "n"
+
+        if user_value == "y":
+            print("\n--> Please provide full path to your SSL certificate : ", end='', flush=True)
+            user_value = input()
+            read_configuration["client_ssl_certificate"] = user_value
+            break
+        elif user_value == "n":
+            read_configuration["client_ssl_certificate"] = ""
+            break
+
     # Write file out
     #
     set_jarvis_configuration_file(read_configuration)
@@ -301,7 +354,7 @@ def jarvis_config():
     #
     jarvis_home_directory = process_jarvis_home_directory(host_system)
 
-    # Set temporarly the env. variable
+    # Set temporarily the env. variable
     #
     os.environ["JARVIS_HOME"] = jarvis_home_directory
 

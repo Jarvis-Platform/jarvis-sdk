@@ -24,14 +24,14 @@ warnings.filterwarnings(
 
 # Globals
 #
-JARVIS_SDK_VERSION="0.0.16"
+JARVIS_SDK_VERSION="1.1.0"
 
 
 
 def display_jarvis_header():
 
     print("")
-    print("J.A.R.V.I.S SDK")
+    print("JARVIS SDK")
     print("Version : " + JARVIS_SDK_VERSION)
     print("")
 
