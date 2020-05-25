@@ -29,6 +29,7 @@ import datetime
 import warnings
 import requests
 import pickle
+import re
 
 from jarvis_sdk import jarvis_config
 from jarvis_sdk import jarvis_auth
@@ -39,6 +40,40 @@ from jarvis_sdk import jarvis_misc
 _current_version = "2019.07.03.001"
 
 warnings.filterwarnings("ignore", "Your application has authenticated using end user credentials")
+
+
+def check_task_dependencies_vs_workflow(task_dependencies, workflow):
+
+    # Process workflow
+    #
+    task_list = []
+    for item in workflow:
+
+        task_list.append(item["id"].strip())
+
+    missing_tasks = []
+    for line in task_dependencies:
+
+        line = re.sub(">>|<<|\[|\]|,", " ", line)
+
+        for item in line.split():
+
+            if item not in task_list:
+
+                missing_tasks.append(item.strip())
+
+    if len(missing_tasks) > 0:
+
+        print("\n")
+        for missing_task in  missing_tasks:
+            print("ERROR : the task with ID \"{}\" is present in \"task_dependencies\" but not in \"workflow\". Please fix this.".format(missing_task))
+
+        print("\n")
+        return False
+
+    else:
+
+        return True
 
 
 def build_header(dag_name, dag_start_date):
@@ -1204,6 +1239,11 @@ def process(configuration_file):
     # Extract task dependencies, this should use the Airflow syntax : t1>>t2>>[t31,t32]>>t4
     #
     dag_task_dependencies = json_payload["task_dependencies"]
+
+    # Check that all task declared in "task_dependencies" are properly described in "workflow".
+    #
+    if check_task_dependencies_vs_workflow(task_dependencies=dag_task_dependencies, workflow=json_payload["workflow"]) is False:
+        return False
 
     # Start building the payload
     # build the header
