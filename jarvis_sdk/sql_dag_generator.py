@@ -51,6 +51,7 @@ import os
 import json
 import base64
 import uuid
+import time
 
 import airflow
 from airflow.operators.bash_operator import BashOperator
@@ -135,6 +136,20 @@ def initialize(**kwargs):
     collection      = "gbq-to-gbq-conf"
     doc_id          = \"""" + dag_name + """\"
 
+    # Delete the Task statuses if it exists
+    #
+    try:
+        db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).delete()
+    except Exception:
+        logging.info("No Tasks Statuses found.")
+
+    # Set this task as RUNNING
+    #
+    task_infos = {}
+    task_infos[kwargs["ti"].task_id] = "running"
+    db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
+
+
     data_read = (db.collection(collection).document(doc_id).get()).to_dict()
     data_read['sql'] = {}
 
@@ -161,6 +176,12 @@ def initialize(**kwargs):
         dag_activated = json.loads(data_read["activated"])
     except KeyError:
         print("No activated attribute found in DAGs config. Setting to default : True")
+
+    # Set this task as SUCCESS
+    #
+    task_infos = {}
+    task_infos[kwargs["ti"].task_id] = "success"
+    db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
 
     if dag_activated is True:
         return "send_dag_infos_to_pubsub_after_config"
@@ -263,6 +284,12 @@ def execute_gbq(sql_id, env, dag_name, gcp_project_id, bq_dataset, table_name, w
     collection      = "gbq-to-gbq-conf"
     doc_id          = \"""" + dag_name + """\"
 
+    # Set this task as RUNNING
+    #
+    task_infos = {}
+    task_infos[kwargs["ti"].task_id] = "running"
+    db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
+
     logging.info("Trying to retrieve SQL query from Firestore : %s > %s  : sql -> %s", collection, doc_id, sql_id)
 
     data_read = (db.collection(collection).document(doc_id).get()).to_dict()
@@ -360,6 +387,13 @@ def execute_gbq(sql_id, env, dag_name, gcp_project_id, bq_dataset, table_name, w
     except:
         logging.info("Query returned no result...")
 
+    # Set this task as SUCCESS
+    #
+    task_infos = {}
+    task_infos[kwargs["ti"].task_id] = "success"
+    db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
+
+
 
 def execute_bq_copy_table(  source_gcp_project_id, 
                             source_bq_dataset, 
@@ -386,6 +420,14 @@ def execute_bq_copy_table(  source_gcp_project_id,
     info = json.loads(Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
     credentials = service_account.Credentials.from_service_account_info(info)
     gbq_client = bigquery.Client(project="fd-jarvis-datalake", credentials=credentials)
+    db = firestore.Client(credentials=credentials)
+
+    # Set this task as RUNNING
+    #
+    task_infos = {}
+    task_infos[kwargs["ti"].task_id] = "running"
+    db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
+
 
     # Source data
     #
@@ -415,6 +457,13 @@ def execute_bq_copy_table(  source_gcp_project_id,
     job.result()  # Waits for job to complete.
     assert job.state == "DONE"
 
+    # Set this task as SUCCESS
+    #
+    task_infos = {}
+    task_infos[kwargs["ti"].task_id] = "success"
+    db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
+
+
 
 def execute_bq_create_table(gcp_project_id,
                             force_delete,
@@ -438,6 +487,15 @@ def execute_bq_create_table(gcp_project_id,
     info = json.loads(Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
     credentials = service_account.Credentials.from_service_account_info(info)
     gbq_client = bigquery.Client(project=gcp_project_id, credentials=credentials)
+    db = firestore.Client(credentials=credentials)
+
+    # Set this task as RUNNING
+    #
+    logging.info("Setting task status : running")
+    task_infos = {}
+    task_infos[kwargs["ti"].task_id] = "running"
+    time.sleep(1)
+    db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
 
     # Instantiate a table object
     #
@@ -467,6 +525,14 @@ def execute_bq_create_table(gcp_project_id,
                 table_name_with_partition = gcp_project_id + "." + bq_dataset + "." + bq_table + "$" + (kwargs.get('ds')).replace("-", "")
                 logging.info("Delete partition : %s", table_name_with_partition)
                 gbq_client.delete_table(table_name_with_partition)
+
+            # Set this task as SUCCESS
+            #
+            logging.info("Setting task status : success")
+            task_infos = {}
+            task_infos[kwargs["ti"].task_id] = "success"
+            time.sleep(1)
+            db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
             
             return
 
@@ -476,6 +542,15 @@ def execute_bq_create_table(gcp_project_id,
     except ValueError as error:
         logging.info(error)
         logging.info("Table {} exists and is not time partitioned.".format(gcp_project_id + ":" + bq_dataset + "." + bq_table))
+
+        # Set this task as SUCCESS
+        #
+        logging.info("Setting task status : success")
+        task_infos = {}
+        task_infos[kwargs["ti"].task_id] = "success"
+        time.sleep(1)
+        db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
+
         return
 
     # Get a new REF
@@ -580,6 +655,15 @@ def execute_bq_create_table(gcp_project_id,
     # Create table
     #
     job = gbq_client.create_table(table)
+
+    # Set this task as SUCCESS
+    #
+    logging.info("Setting task status : success")
+    task_infos = {}
+    task_infos[kwargs["ti"].task_id] = "success"
+    time.sleep(1)
+    db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
+
 """
 
     return output_payload

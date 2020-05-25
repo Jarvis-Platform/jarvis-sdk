@@ -9,7 +9,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="jarvis-sdk",
-    version="1.1.0",
+    version="1.1.1",
     packages=['jarvis_sdk'],
     description='JARVIS SDK Python Package',
     long_description=long_description,

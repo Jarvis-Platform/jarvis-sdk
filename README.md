@@ -2,6 +2,12 @@
 
 ## Changelog
 
+### Release 1.1.1 : 2020-05-18
+
+* Added support for ZSH under Max OS X
+* Added task status for Table To Table DAGs
+* Project Profiles list in now sorted
+
 ### Release 1.1.0 : 2020-02-19
 
 * Added TTT DAG file checking upon deployment. The user must validate if he wants to overwrite TTT DAG.

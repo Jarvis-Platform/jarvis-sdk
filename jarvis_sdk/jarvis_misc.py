@@ -59,6 +59,9 @@ def choose_project_profiles(jarvis_configuration, firebase_user):
     print("List of available profiles for you :")
     print("-----------------------------------")
     index = 1
+
+    payload.sort()
+
     for profile in payload:
 
         print("{} - {}".format(str(index), profile))
