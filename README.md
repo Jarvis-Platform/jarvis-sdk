@@ -2,6 +2,15 @@
 
 ## Changelog
 
+### Release 1.1.1 : 2020-05-18
+
+* Added support for ZSH under Max OS X
+* TTT : Added task status
+* TTT : added special check for tasks declared in "task_dependencies" but not in "workflow"
+* TTT : check if task IDs are named properly
+* TTT : You can run tasks locally with : jarvis configuration run YOUR-CONF.json [task1 task2 .... taskN]
+* Project Profiles list is now sorted
+
 ### Release 1.1.0 : 2020-02-19
 
 * Added TTT DAG file checking upon deployment. The user must validate if he wants to overwrite TTT DAG.

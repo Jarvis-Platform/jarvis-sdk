@@ -29,6 +29,10 @@ import datetime
 import warnings
 import requests
 import pickle
+import re
+import sys
+import tempfile
+import copy
 
 from jarvis_sdk import jarvis_config
 from jarvis_sdk import jarvis_auth
@@ -41,24 +45,72 @@ _current_version = "2019.07.03.001"
 warnings.filterwarnings("ignore", "Your application has authenticated using end user credentials")
 
 
-def build_header(dag_name, dag_start_date):
+def check_task_dependencies_vs_workflow(task_dependencies, workflow):
+
+    # Process workflow
+    #
+    task_list = []
+    for item in workflow:
+
+        task_list.append(item["id"].strip())
+
+    missing_tasks = []
+    for line in task_dependencies:
+
+        line = re.sub(">>|<<|\[|\]|,", " ", line)
+
+        for item in line.split():
+
+            if item not in task_list:
+
+                missing_tasks.append(item.strip())
+
+    if len(missing_tasks) > 0:
+
+        print("\n")
+        for missing_task in  missing_tasks:
+            print("ERROR : the task with ID \"{}\" is present in \"task_dependencies\" but not in \"workflow\". Please fix this.".format(missing_task))
+
+        print("\n")
+        return False
+
+    else:
+
+        return True
+
+
+def check_task_id_naming(workflow):
+
+    # Process workflow
+    #
+    pattern = "(^[a-zA-Z])([a-zA-Z0-9_]+)([a-zA-Z0-9])$"
+    task_list = []
+    final_result = True
+
+    for item in workflow:
+
+        result = re.match(pattern, item["id"].strip())
+
+        if not result:
+            final_result = False
+            print("The task ID \"{}\" is malformed. First character must be a letter, you can use letters, numbers and underscores afterwards, but the last character cannot be an underscore.".format(item["id"].strip()))
+
+    return final_result
+
+
+def build_header():
 
     output_payload = """# -*- coding: utf-8 -*-
 
 import datetime
 import logging
+import sys
 import os
 import json
 import base64
 import uuid
-
-import airflow
-from airflow.operators.bash_operator import BashOperator
-from airflow.operators.python_operator import PythonOperator, ShortCircuitOperator, BranchPythonOperator
-from airflow.operators.dummy_operator import DummyOperator
-from airflow.models import Variable
-from airflow.operators import FashiondDataPubSubPublisherOperator
-from airflow.operators import FashiondDataGoogleComputeInstanceOperator
+import time
+import warnings
 from jinja2 import Template
 
 from google.cloud import bigquery
@@ -66,6 +118,21 @@ from google.cloud import firestore
 from google.cloud import storage
 from google.cloud import exceptions
 from google.oauth2 import service_account
+"""
+
+    return output_payload
+
+
+def build_header_full(dag_name, dag_start_date):
+
+    output_payload = """
+import airflow
+from airflow.operators.bash_operator import BashOperator
+from airflow.operators.python_operator import PythonOperator, ShortCircuitOperator, BranchPythonOperator
+from airflow.operators.dummy_operator import DummyOperator
+from airflow.models import Variable
+from airflow.operators import FashiondDataPubSubPublisherOperator
+from airflow.operators import FashiondDataGoogleComputeInstanceOperator
 
 # FD tools
 from dependencies import fd_toolbox
@@ -97,6 +164,101 @@ default_args = {
 def build_functions(dag_name, environment):
 
     output_payload = """
+
+def process_bigquery_record(payload, convert_type_to_string=False):
+
+    logging.info("Processing RECORD type ...")
+
+    # Check for field description
+    #
+    field_description = None
+    try:
+        field_description = payload['description']
+    except Exception:
+        field_description = None
+
+    # Check for field MODE
+    #
+    mode = None
+    try:
+        mode = payload['mode']
+    except Exception:
+        mode = "NULLABLE"
+
+    # Check for field FIELDS
+    #
+    fields = ()
+    try:
+        fields_list = payload['fields']
+        logging.info(payload['fields'])
+        list_tuples = []
+
+        for field in fields_list:
+
+            # Field, NAME
+            field_name = None
+            try:
+                field_name = field['name']
+            except KeyError:
+                # error
+                continue
+
+            # Field, TYPE
+            field_type = None
+            try:
+                field_type = field['type'].strip()
+            except KeyError:
+                # error
+                continue
+
+            logging.info("Field name : {} || Field type : {}".format(
+                field_name, field_type))
+
+            # Check if field type is RECORD
+            #
+            if field_type == "RECORD":
+                logging.info("Going to process sub Record.")
+                processed_record = process_bigquery_record(field)
+                logging.info(
+                    "Sub Record processed : \\n{}".format(processed_record))
+                list_tuples.append(processed_record)
+
+            else:
+
+                # Field, MODE
+                field_mode = None
+                try:
+                    field_mode = field['mode']
+                except KeyError:
+                    field_mode = "NULLABLE"
+
+                # Field, DESCRIPTION
+                field_desc = None
+                try:
+                    field_desc = field['description']
+                except KeyError:
+                    field_desc = None
+
+                # Convert FIELD TYPE to STRING
+                #
+                if convert_type_to_string is True:
+                    field_type = "STRING"
+
+                list_tuples.append(bigquery.SchemaField(name=field_name,
+                                                        field_type=field_type,
+                                                        mode=field_mode,
+                                                        description=field_desc))
+
+        fields = tuple(list_tuples)
+
+    except Exception:
+        fields = ()
+
+    # Must return a bigquery.SchemaField
+    #
+    logging.info("Creating SchemaField : name : {} || type : {} || desc. : {} || mode : {} || fields : {}".format(
+        payload['name'], payload['type'], field_description, mode, fields))
+    return bigquery.SchemaField(payload['name'], payload['type'], description=field_description, mode=mode, fields=fields)
 
 def get_firestore_data(collection, doc_id, item, credentials):
 
@@ -135,6 +297,20 @@ def initialize(**kwargs):
     collection      = "gbq-to-gbq-conf"
     doc_id          = \"""" + dag_name + """\"
 
+    # Delete the Task statuses if it exists
+    #
+    try:
+        db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).delete()
+    except Exception:
+        logging.info("No Tasks Statuses found.")
+
+    # Set this task as RUNNING
+    #
+    task_infos = {}
+    task_infos[kwargs["ti"].task_id] = "running"
+    db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
+
+
     data_read = (db.collection(collection).document(doc_id).get()).to_dict()
     data_read['sql'] = {}
 
@@ -161,6 +337,12 @@ def initialize(**kwargs):
         dag_activated = json.loads(data_read["activated"])
     except KeyError:
         print("No activated attribute found in DAGs config. Setting to default : True")
+
+    # Set this task as SUCCESS
+    #
+    task_infos = {}
+    task_infos[kwargs["ti"].task_id] = "success"
+    db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
 
     if dag_activated is True:
         return "send_dag_infos_to_pubsub_after_config"
@@ -247,7 +429,7 @@ def log_to_gbq( short_dag_exec_date,
     assert query_job.state == 'DONE'
 
 
-def execute_gbq(sql_id, env, dag_name, gcp_project_id, bq_dataset, table_name, write_disposition, sql_query_template, **kwargs):
+def execute_gbq(sql_id, env, dag_name, gcp_project_id, bq_dataset, table_name, write_disposition, sql_query_template, run_locally=False, local_sql_query=None, **kwargs):
 
     # Strip the ENVIRONMENT out of the DAG's name
     # i.e : my_dag_PROD -> my_dag
@@ -257,27 +439,45 @@ def execute_gbq(sql_id, env, dag_name, gcp_project_id, bq_dataset, table_name, w
     # Read SQL file according to the configuration specified
     # The configuration is stored in Firestore
     #
-    info            = json.loads(Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
-    credentials     = service_account.Credentials.from_service_account_info(info)
-    db              = firestore.Client(credentials=credentials)
-    collection      = "gbq-to-gbq-conf"
-    doc_id          = \"""" + dag_name + """\"
+    if run_locally is False:
+        info            = json.loads(Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
+        credentials     = service_account.Credentials.from_service_account_info(info)
+        db              = firestore.Client(credentials=credentials)
+        collection      = "gbq-to-gbq-conf"
+        doc_id          = \"""" + dag_name + """\"
 
-    logging.info("Trying to retrieve SQL query from Firestore : %s > %s  : sql -> %s", collection, doc_id, sql_id)
+    # Set this task as RUNNING
+    #
+    if run_locally is False:
+        task_infos = {}
+        task_infos[kwargs["ti"].task_id] = "running"
+        db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
 
-    data_read = (db.collection(collection).document(doc_id).get()).to_dict()
-    data_decoded = base64.b64decode(data_read['sql'][sql_id])
-    sql_query = str(data_decoded, 'utf-8')
+        logging.info("Trying to retrieve SQL query from Firestore : %s > %s  : sql -> %s", collection, doc_id, sql_id)
+
+    if run_locally is False:
+        data_read = (db.collection(collection).document(doc_id).get()).to_dict()
+        data_decoded = base64.b64decode(data_read['sql'][sql_id])
+        sql_query = str(data_decoded, 'utf-8')
+
+    else:
+
+        # Local execution
+        #
+        sql_query = local_sql_query
+        logging.info("SQL Query : {}\\n".format(sql_query))
 
     # Update the configuration context
     #
     # config_context = json.loads(kwargs['ti'].xcom_pull(key='configuration_context'))
     # config_context['sql'][sql_id] = sql_query
     # kwargs['ti'].xcom_push(key='configuration_context', value=json.dumps(config_context))
-    doc_id = kwargs['ti'].xcom_pull(key='airflow-com-id')
-    config_context = get_firestore_data('airflow-com', doc_id, 'configuration_context', Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
-    config_context['sql'][sql_id] = sql_query
-    set_firestore_data('airflow-com', doc_id, 'configuration_context', config_context, Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
+    #
+    if run_locally is False:
+        doc_id = kwargs['ti'].xcom_pull(key='airflow-com-id')
+        config_context = get_firestore_data('airflow-com', doc_id, 'configuration_context', Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
+        config_context['sql'][sql_id] = sql_query
+        set_firestore_data('airflow-com', doc_id, 'configuration_context', config_context, Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
 
     # Replace "sql_query_template" with DAG Execution DATE
     #
@@ -294,9 +494,15 @@ def execute_gbq(sql_id, env, dag_name, gcp_project_id, bq_dataset, table_name, w
 
     logging.info("SQL Query : \\n\\r%s", sql_query)
 
-    info                = json.loads(Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
-    credentials         = service_account.Credentials.from_service_account_info(info)
-    gbq_client          = bigquery.Client(project=gcp_project_id, credentials=credentials)
+    if run_locally is False:
+        info                = json.loads(Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
+        credentials         = service_account.Credentials.from_service_account_info(info)
+        gbq_client          = bigquery.Client(project=gcp_project_id, credentials=credentials)
+
+    else:
+
+        gbq_client          = bigquery.Client(project=gcp_project_id)
+
     dataset_id          = bq_dataset
     dataset_ref         = gbq_client.dataset(dataset_id)
     dataset             = bigquery.Dataset(dataset_ref)
@@ -348,17 +554,26 @@ def execute_gbq(sql_id, env, dag_name, gcp_project_id, bq_dataset, table_name, w
         logging.info("Output of result : %s", results)
         logging.info("Rows             : %s", results.total_rows)
 
-        log_to_gbq( kwargs["ds_nodash"],
-                    kwargs["ds"],
-                    kwargs["run_id"],
-                    _dag_name,
-                    \"""" + environment + """\",
-                    sql_id,
-                    bq_dataset,
-                    table_name,
-                    results.total_rows )
+        if run_locally is False:
+            log_to_gbq( kwargs["ds_nodash"],
+                        kwargs["ds"],
+                        kwargs["run_id"],
+                        _dag_name,
+                        \"""" + environment + """\",
+                        sql_id,
+                        bq_dataset,
+                        table_name,
+                        results.total_rows )
     except:
         logging.info("Query returned no result...")
+
+    # Set this task as SUCCESS
+    #
+    if run_locally is False:
+        task_infos = {}
+        task_infos[kwargs["ti"].task_id] = "success"
+        db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
+
 
 
 def execute_bq_copy_table(  source_gcp_project_id, 
@@ -369,6 +584,7 @@ def execute_bq_copy_table(  source_gcp_project_id,
                             destination_bq_table,
                             destination_bq_table_date_suffix,
                             destination_bq_table_date_suffix_format,
+                            run_locally,
                             **kwargs):
 
 
@@ -383,9 +599,22 @@ def execute_bq_copy_table(  source_gcp_project_id,
 
     # Create Bigquery client
     #
-    info = json.loads(Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
-    credentials = service_account.Credentials.from_service_account_info(info)
-    gbq_client = bigquery.Client(project="fd-jarvis-datalake", credentials=credentials)
+    if run_locally is False:
+        info = json.loads(Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
+        credentials = service_account.Credentials.from_service_account_info(info)
+        gbq_client = bigquery.Client(project="fd-jarvis-datalake", credentials=credentials)
+        db = firestore.Client(credentials=credentials)
+
+    else:
+
+        gbq_client = bigquery.Client(project="fd-jarvis-datalake")
+
+    # Set this task as RUNNING
+    #
+    if run_locally is False:
+        task_infos = {}
+        task_infos[kwargs["ti"].task_id] = "running"
+        db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
 
     # Source data
     #
@@ -415,6 +644,14 @@ def execute_bq_copy_table(  source_gcp_project_id,
     job.result()  # Waits for job to complete.
     assert job.state == "DONE"
 
+    # Set this task as SUCCESS
+    #
+    if run_locally is False:
+        task_infos = {}
+        task_infos[kwargs["ti"].task_id] = "success"
+        db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
+
+
 
 def execute_bq_create_table(gcp_project_id,
                             force_delete,
@@ -426,6 +663,7 @@ def execute_bq_create_table(gcp_project_id,
                             bq_table_timepartitioning_field,
                             bq_table_timepartitioning_expiration_ms,
                             bq_table_timepartitioning_require_partition_filter,
+                            run_locally=False,
                             **kwargs):
 
 
@@ -435,9 +673,22 @@ def execute_bq_create_table(gcp_project_id,
     
     # Create Bigquery client
     #
-    info = json.loads(Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
-    credentials = service_account.Credentials.from_service_account_info(info)
-    gbq_client = bigquery.Client(project=gcp_project_id, credentials=credentials)
+    if run_locally is False:
+        info = json.loads(Variable.get("COMPOSER_SERVICE_ACCOUNT_CREDENTIALS_SECRET"))
+        credentials = service_account.Credentials.from_service_account_info(info)
+        gbq_client = bigquery.Client(project=gcp_project_id, credentials=credentials)
+        db = firestore.Client(credentials=credentials)
+    else:
+        gbq_client = bigquery.Client(project=gcp_project_id)
+
+    # Set this task as RUNNING
+    #
+    if run_locally is False:
+        logging.info("Setting task status : running")
+        task_infos = {}
+        task_infos[kwargs["ti"].task_id] = "running"
+        time.sleep(1)
+        db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
 
     # Instantiate a table object
     #
@@ -467,6 +718,14 @@ def execute_bq_create_table(gcp_project_id,
                 table_name_with_partition = gcp_project_id + "." + bq_dataset + "." + bq_table + "$" + (kwargs.get('ds')).replace("-", "")
                 logging.info("Delete partition : %s", table_name_with_partition)
                 gbq_client.delete_table(table_name_with_partition)
+
+            # Set this task as SUCCESS
+            #
+            logging.info("Setting task status : success")
+            task_infos = {}
+            task_infos[kwargs["ti"].task_id] = "success"
+            time.sleep(1)
+            db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
             
             return
 
@@ -476,7 +735,18 @@ def execute_bq_create_table(gcp_project_id,
     except ValueError as error:
         logging.info(error)
         logging.info("Table {} exists and is not time partitioned.".format(gcp_project_id + ":" + bq_dataset + "." + bq_table))
+
+        # Set this task as SUCCESS
+        #
+        if run_locally is False:
+            logging.info("Setting task status : success")
+            task_infos = {}
+            task_infos[kwargs["ti"].task_id] = "success"
+            time.sleep(1)
+            db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
+
         return
+
 
     # Get a new REF
     #
@@ -532,7 +802,11 @@ def execute_bq_create_table(gcp_project_id,
         # Process RECORD type
         #
         if field_type == "RECORD":
-            schemafield_to_add = fd_toolbox.process_bigquery_record(item)
+            if run_locally is False:
+                schemafield_to_add = fd_toolbox.process_bigquery_record(item)
+            else:
+                schemafield_to_add = process_bigquery_record(item)
+
             logging.info("Record processed : \\n{}".format(schemafield_to_add))
 
         else:
@@ -562,7 +836,7 @@ def execute_bq_create_table(gcp_project_id,
 
     # Processing time partitioning options
     #
-    if (bq_table_timepartitioning_field is not None) or (bq_table_timepartitioning_expiration_ms is not None) or     (bq_table_timepartitioning_require_partition_filter is not None):
+    if (bq_table_timepartitioning_field is not None) or (bq_table_timepartitioning_expiration_ms is not None) or (bq_table_timepartitioning_require_partition_filter is not None):
 
         logging.info("Time Partitioning FIELD                    : %s", bq_table_timepartitioning_field)
         logging.info("Time Partitioning EXPIRATION MS            : %s", bq_table_timepartitioning_expiration_ms)
@@ -580,6 +854,16 @@ def execute_bq_create_table(gcp_project_id,
     # Create table
     #
     job = gbq_client.create_table(table)
+
+    # Set this task as SUCCESS
+    #
+    if run_locally is False:
+        logging.info("Setting task status : success")
+        task_infos = {}
+        task_infos[kwargs["ti"].task_id] = "success"
+        time.sleep(1)
+        db.collection("gbq-to-gbq-tasks-status").document(kwargs["ti"].dag_id + "_" + kwargs["run_id"]).set(task_infos, merge=True)
+
 """
 
     return output_payload
@@ -692,7 +976,7 @@ def build_complementary_code():
     return output_payload
 
 
-def build_sql_task(payload, env, default_gcp_project_id, default_bq_dataset, default_write_disposition, global_path):
+def build_sql_task(payload, env, default_gcp_project_id, default_bq_dataset, default_write_disposition, global_path, run_locally=False):
 
     # Check for overridden values : GCP Project ID, Dataset, ...
     #
@@ -739,42 +1023,58 @@ def build_sql_task(payload, env, default_gcp_project_id, default_bq_dataset, def
     #
     sql_doc = ""
     with open("./" + payload["sql_file"], 'r') as file:
-        sql_doc += file.read().replace("`", "'").replace("\n", "\n\n")
-        # print(sql_doc)
+        sql_doc += file.read().replace("\n", "\n\n")
 
-    output_payload = ""
-    output_payload += "    " + payload["id"] + " = "
-    output_payload += """PythonOperator(
-            task_id = \"""" + payload["id"] + """\",
-            dag = dag,
-            python_callable = execute_gbq,
-            op_kwargs={ "sql_id" : \"""" + payload["id"] + """\",
-                        "env" : \"""" + env + """\",
-                        "dag_name" : _dag_name,
-                        "gcp_project_id" : \"""" + gcp_project_id + """\",
-                        "bq_dataset" : \"""" + bq_dataset + """\",
-                        "table_name" : \"""" + payload["table_name"] + """\",
-                        "write_disposition" : \"""" + write_disposition + """\",
-                        "sql_query_template" : \"""" + sql_query_template + """\"
-                        }
-            )
+    if run_locally is True:
 
-    """ + payload["id"] + """.doc_md = \"\"\"""" + dag_doc + """
-
-# **SQL Query**
-
-""" + sql_doc + """
-\"\"\"
+        output_payload = """    execute_gbq(sql_id = \"""" + payload["id"] + """\",
+        env = \"""" + env + """\",
+        dag_name = "TEST",
+        gcp_project_id = \"""" + gcp_project_id + """\",
+        bq_dataset = \"""" + bq_dataset + """\",
+        table_name = \"""" + payload["table_name"] + """\",
+        write_disposition = \"""" + write_disposition + """\",
+        sql_query_template = \"""" + sql_query_template + """\",
+        run_locally = True,
+        local_sql_query = \"\"\"""" + sql_doc + """\"\"\"
+        )
 
 """
+
+    else:
+
+        sql_doc = sql_doc.replace("`", "'")
+
+        output_payload = ""
+        output_payload += "    " + payload["id"] + " = "
+        output_payload += """PythonOperator(
+                task_id = \"""" + payload["id"] + """\",
+                dag = dag,
+                python_callable = execute_gbq,
+                op_kwargs={ "sql_id" : \"""" + payload["id"] + """\",
+                            "env" : \"""" + env + """\",
+                            "dag_name" : _dag_name,
+                            "gcp_project_id" : \"""" + gcp_project_id + """\",
+                            "bq_dataset" : \"""" + bq_dataset + """\",
+                            "table_name" : \"""" + payload["table_name"] + """\",
+                            "write_disposition" : \"""" + write_disposition + """\",
+                            "sql_query_template" : \"""" + sql_query_template + """\"
+                            }
+                )
+
+        """ + payload["id"] + """.doc_md = \"\"\"""" + dag_doc + """
+
+    # **SQL Query**
+
+    """ + sql_doc + """
+    \"\"\"
+
+    """
 
     return output_payload
 
 
-def build_copy_bq_table_task(payload, default_gcp_project_id, default_bq_dataset):
-
-    # Prepare output value
-    output_payload = ""
+def build_copy_bq_table_task(payload, default_gcp_project_id, default_bq_dataset, run_locally=False):
 
     # Check for overridden values : GCP Project ID, Dataset, ...
     #
@@ -801,28 +1101,48 @@ def build_copy_bq_table_task(payload, default_gcp_project_id, default_bq_dataset
     except KeyError:
         print()
 
-    output_payload += "    " + payload["id"] + " = "
-    output_payload += """PythonOperator(
-        task_id=\"""" + payload["id"] + """\",
-        dag=dag,
-        python_callable=execute_bq_copy_table,
-        op_kwargs={
-            "source_gcp_project_id" : \"""" + payload["source_gcp_project_id"].strip() + """\",
-            "source_bq_dataset" : \"""" + payload["source_bq_dataset"].strip() + """\",
-            "source_bq_table" : \"""" + payload["source_bq_table"].strip() + """\",
-            "destination_gcp_project_id" : \"""" + gcp_project_id.strip() + """\",
-            "destination_bq_dataset" : \"""" + bq_dataset.strip() + """\",
-            "destination_bq_table" : \"""" + payload["destination_bq_table"].strip() + """\",
-            "destination_bq_table_date_suffix" : """ + destination_bq_table_date_suffix + """,
-            "destination_bq_table_date_suffix_format" : \"""" + destination_bq_table_date_suffix_format + """\"
-        }
-    )
+    # Prepare output value
+    output_payload = ""
+
+    if run_locally is True:
+
+        output_payload += """    execute_bq_copy_table(source_gcp_project_id = \"""" + payload["source_gcp_project_id"].strip() + """\",
+        source_bq_dataset = \"""" + payload["source_bq_dataset"].strip() + """\",
+        source_bq_table = \"""" + payload["source_bq_table"].strip() + """\",
+        destination_gcp_project_id = \"""" + gcp_project_id.strip() + """\",
+        destination_bq_dataset = \"""" + bq_dataset.strip() + """\",
+        destination_bq_table = \"""" + payload["destination_bq_table"].strip() + """\",
+        destination_bq_table_date_suffix = """ + destination_bq_table_date_suffix + """,
+        destination_bq_table_date_suffix_format = \"""" + destination_bq_table_date_suffix_format + """\",
+        run_locally = True
+        )
+
+"""
+
+    else:
+
+        output_payload += "    " + payload["id"] + " = "
+        output_payload += """PythonOperator(
+            task_id=\"""" + payload["id"] + """\",
+            dag=dag,
+            python_callable=execute_bq_copy_table,
+            op_kwargs={
+                "source_gcp_project_id" : \"""" + payload["source_gcp_project_id"].strip() + """\",
+                "source_bq_dataset" : \"""" + payload["source_bq_dataset"].strip() + """\",
+                "source_bq_table" : \"""" + payload["source_bq_table"].strip() + """\",
+                "destination_gcp_project_id" : \"""" + gcp_project_id.strip() + """\",
+                "destination_bq_dataset" : \"""" + bq_dataset.strip() + """\",
+                "destination_bq_table" : \"""" + payload["destination_bq_table"].strip() + """\",
+                "destination_bq_table_date_suffix" : """ + destination_bq_table_date_suffix + """,
+                "destination_bq_table_date_suffix_format" : \"""" + destination_bq_table_date_suffix_format + """\"
+            }
+        )
 """
 
     return output_payload
 
 
-def build_create_bq_table_task(payload, default_gcp_project_id, default_bq_dataset, global_path):
+def build_create_bq_table_task(payload, default_gcp_project_id, default_bq_dataset, global_path, run_locally=False):
 
     # Prepare output value
     output_payload = ""
@@ -934,8 +1254,29 @@ def build_create_bq_table_task(payload, default_gcp_project_id, default_bq_datas
     except KeyError:
         bq_table_timepartitioning_require_partition_filter = None
 
-    output_payload += "    " + payload["id"] + " = "
-    output_payload += """PythonOperator(
+
+    if run_locally is True:
+
+        output_payload += """    execute_bq_create_table(gcp_project_id = \"""" + gcp_project_id + """\",
+        force_delete = """ + str(force_delete) + """,
+        bq_dataset = \"""" + bq_dataset + """\",
+        bq_table = \"""" + payload["bq_table"].strip() + """\",
+        bq_table_description = \"""" + table_description + """\",
+        bq_table_schema = """ + str(table_schema) + """,
+        bq_table_clustering_fields = """ + str(bq_table_clustering_fields) + """,
+        bq_table_timepartitioning_field = """ + (str(bq_table_timepartitioning_field) if (bq_table_timepartitioning_field is None) else ("\"" + bq_table_timepartitioning_field + "\"")) + """,
+        bq_table_timepartitioning_expiration_ms = """ + (str(bq_table_timepartitioning_expiration_ms) if (bq_table_timepartitioning_expiration_ms is None) else ("\"" + bq_table_timepartitioning_expiration_ms + "\"")) + """,
+        bq_table_timepartitioning_require_partition_filter = """ + (str(bq_table_timepartitioning_require_partition_filter) if (bq_table_timepartitioning_require_partition_filter is None) else ("\"" + bq_table_timepartitioning_require_partition_filter + "\"")) + """,
+        run_locally = True
+        )
+"""
+
+        return output_payload
+
+    else:
+
+        output_payload += "    " + payload["id"] + " = "
+        output_payload += """PythonOperator(
         task_id=\"""" + payload["id"] + """\",
         dag=dag,
         python_callable=execute_bq_create_table,
@@ -953,16 +1294,18 @@ def build_create_bq_table_task(payload, default_gcp_project_id, default_bq_datas
         }
     )
 """
-    # "bq_table_timepartitioning_field" : """ + str(bq_table_timepartitioning_field.strip()) + """,
 
     return output_payload
 
 
-def build_vm_launcher_task(payload, gcp_project_id):
+def build_vm_launcher_task(payload, gcp_project_id, run_locally=False):
 
     # Infos
     #
     print("Generating VM LAUNCHER task ...")
+
+    if run_locally is True:
+        return ""
 
     # Retrieve parameters
     #
@@ -996,9 +1339,6 @@ def build_vm_launcher_task(payload, gcp_project_id):
     except KeyError:
         vm_disk_size = "10"
 
-    
-
-
     # Prepare output value
     #
     output_payload = ""
@@ -1021,7 +1361,18 @@ def build_vm_launcher_task(payload, gcp_project_id):
     return output_payload
 
 
-def process(configuration_file):
+def process(configuration_file, run_locally=False, arguments=None):
+
+    # Do we run locally ?
+    # We need to check the arguments
+    #
+    if run_locally is True:
+        local_tasks = []
+
+        index = 2
+        while index < len(arguments):
+            local_tasks.append(arguments[index].strip())
+            index += 1
 
     # Infos
     #
@@ -1121,13 +1472,26 @@ def process(configuration_file):
     #
     dag_task_dependencies = json_payload["task_dependencies"]
 
+    # Check that all task declared in "task_dependencies" are properly described in "workflow".
+    #
+    if check_task_dependencies_vs_workflow(task_dependencies=dag_task_dependencies, workflow=json_payload["workflow"]) is False:
+        return False
+
+    # Check that all task IDs are formed properly
+    #
+    if check_task_id_naming(workflow=json_payload["workflow"]) is False:
+        return False
+
     # Start building the payload
     # build the header
     #
-    output_payload = build_header(dag_name, dag_start_date)
+    output_payload = build_header()
+    if run_locally is False:
+        output_payload += build_header_full(dag_name, dag_start_date)
 
     # Add the different functions needed
     #
+    # if run_locally is False:
     output_payload += build_functions(dag_name, environment)
 
     # Main code
@@ -1140,7 +1504,8 @@ def process(configuration_file):
     else:
         dag_schedule_interval = "\"" + json_payload["schedule_interval"] + "\""
 
-    output_payload += """
+    if run_locally is False:
+        output_payload += """
 with airflow.DAG(
     _dag_name,
     default_args=default_args,
@@ -1150,15 +1515,72 @@ with airflow.DAG(
     catchup = """ + str(catchup) + """,
     description = \"""" + dag_description + """\") as dag:"""
 
-    output_payload += """
+        output_payload += """
     dag.doc_md = \"\"\"""" + dag_doc + """\"\"\"
 
     # Create all the task that will execute SQL queries
     #
 """
+
+    # Add "main" for local execution
+    #
+    if run_locally is True:
+
+        output_payload += """if __name__ == \"__main__\":
+
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    root.addHandler(handler)
+
+    warnings.filterwarnings("ignore", "Your application has authenticated using end user credentials")
+
+"""
+    # In the case we run locally and yhe user asked for specific tasks,
+    # we need to filter out which task to process
+    #
+
+    # First, we make a copy of the original tasks
+    #
+    tasks_to_process = copy.deepcopy(json_payload["workflow"])
+
+    if (run_locally is True) and (len(local_tasks) > 0):
+
+        tmp_tasks_to_process = []
+
+        for task_requested in local_tasks:
+            
+            print("Looking for task : {}".format(task_requested))
+
+            found = False
+
+            for item in tasks_to_process:
+
+                if item["id"].strip() == task_requested:
+
+                    tmp_tasks_to_process.append(copy.deepcopy(item))
+                    found = True
+                    break
+
+            # No match found
+            #
+            if found is False:
+                print("\nThe task \"{}\" that you've requested does not exist in the configuration workflow. Please check and retry.\n".format(task_requested))
+                return
+
+        # Finally overwrite the tasks to process
+        #
+        tasks_to_process = copy.deepcopy(tmp_tasks_to_process)
+
     # Process all the tasks
     #
-    for item in json_payload["workflow"]:
+    # for item in json_payload["workflow"]:
+    #
+    for item in tasks_to_process:
 
         generated_code = ""
 
@@ -1173,52 +1595,60 @@ with airflow.DAG(
 
         if task_type == "copy_gbq_table":
             generated_code = build_copy_bq_table_task(
-                item, default_gcp_project_id, default_bq_dataset)
+                item, default_gcp_project_id, default_bq_dataset, run_locally=run_locally)
 
         elif task_type == "create_gbq_table":
             generated_code = build_create_bq_table_task(
-                item, default_gcp_project_id, default_bq_dataset, global_path)
+                item, default_gcp_project_id, default_bq_dataset, global_path, run_locally=run_locally)
 
             if generated_code is False:
                 return False
 
         elif task_type == "vm_launcher":
-            generated_code = build_vm_launcher_task(item, default_gcp_project_id)
+            generated_code = build_vm_launcher_task(item, default_gcp_project_id, run_locally=run_locally)
 
         else:
             generated_code = build_sql_task(
-                item, environment, default_gcp_project_id, default_bq_dataset, default_write_disposition, global_path)
+                item, environment, default_gcp_project_id, default_bq_dataset, default_write_disposition, global_path, run_locally=run_locally)
 
         # Add the result to the main payload
         #
+        if run_locally is True:
+            
+            output_payload += """    logging.info("\\n\\nExecuting task with id : {}\\n".format(\"""" + item["id"] + """\"))\n\n"""
+
         output_payload += generated_code + "\n"
 
     # Add "initialize" function
     # Add PubSub logging
     #
-    output_payload += build_complementary_code()
+    if run_locally is False:
+        output_payload += build_complementary_code()
 
     # Add task dependencies
     #
-    output_payload += """
+    if run_locally is False:
+        output_payload += """
     # Task dependencies
     #
     send_dag_infos_to_pubsub_start >> initialize >> send_dag_infos_to_pubsub_after_config
     initialize >> send_dag_infos_to_pubsub_deactivated
 """
-    if len(dag_task_dependencies) > 0:
-        for index in range(0, len(dag_task_dependencies)):
-            output_payload += "    " + dag_task_dependencies[index] + "\n"
+    if run_locally is False:
+        if len(dag_task_dependencies) > 0:
+            for index in range(0, len(dag_task_dependencies)):
+                output_payload += "    " + dag_task_dependencies[index] + "\n"
 
     # Add the task "send_dag_infos_to_pubsub" as the last task
     #
-    for item in json_payload["workflow"]:
-        output_payload += """    """ + \
-            item["id"] + """ << send_dag_infos_to_pubsub_after_config\n\r"""
-        output_payload += """    """ + \
-            item["id"] + """ >> send_dag_infos_to_pubsub\n\r"""
-        output_payload += """    """ + \
-            item["id"] + """ >> send_dag_infos_to_pubsub_failed\n\r"""
+    if run_locally is False:
+        for item in json_payload["workflow"]:
+            output_payload += """    """ + \
+                item["id"] + """ << send_dag_infos_to_pubsub_after_config\n\r"""
+            output_payload += """    """ + \
+                item["id"] + """ >> send_dag_infos_to_pubsub\n\r"""
+            output_payload += """    """ + \
+                item["id"] + """ >> send_dag_infos_to_pubsub_failed\n\r"""
 
     collection = "gbq-to-gbq-conf"
     doc_id = dag_name
@@ -1291,7 +1721,9 @@ with airflow.DAG(
             try:
                 temporary_table = item["temporary_table"]
                 # Everything is fine
+
             except KeyError:
+
                 # We set the flag to False and save it back to the main payload
                 #
                 json_payload["workflow"][index]['temporary_table'] = False
@@ -1324,15 +1756,40 @@ with airflow.DAG(
     data["configuration_type"] = "gbq-to-gbq"
     data["configuration_id"] = dag_name
 
-    # pp = pprint.PrettyPrinter(indent=4)
-    # pp.pprint(data)
-
-    #Debug
+    # Process the "run locally" option
     #
-    # with open("test.py", "w") as outfile:
-    #     outfile.write(output_payload)
+    if run_locally is True:
 
-    # return
+        # Run locally
+        #
+        with tempfile.TemporaryDirectory() as tmpdirname:
+
+            print(tmpdirname)
+
+            tmp_file_path = tmpdirname + "test.py"
+
+            # Paste the file
+            #
+            # with open("test.py", "w") as outfile:
+            #    outfile.write(output_payload)
+
+            with open(tmp_file_path, "w") as outfile:
+            
+
+                outfile.write(output_payload)
+
+                print("\n\nThe TTT configuration will now run locally...\n\n")
+
+                # Python executable used here
+                #
+                python_executable = sys.executable
+                print("Python executable used : {}\n".format(python_executable))
+
+                # Execute the file
+                #
+                os.system(python_executable + " " + tmp_file_path + " 1")
+
+        return
 
     #######################
     # Prepare call to API #

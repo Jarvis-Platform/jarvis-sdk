@@ -205,7 +205,15 @@ def process_jarvis_home_env_variable(host_system):
         if host_system == "Linux":
             user_rc_file = ".bashrc"
         elif host_system == "Darwin":
-            user_rc_file = ".bash_profile"
+
+            # Check the SHELL used
+            #
+            user_rc_file = ".bashrc"
+            try:
+                if "zsh" in os.environ["SHELL"]:
+                    user_rc_file = ".zshrc"
+            except Exception:
+                print("Shell does not seem to be ZSH.")
 
         # Home directory
         #
