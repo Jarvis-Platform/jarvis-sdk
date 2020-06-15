@@ -56,6 +56,20 @@ def main():
     if args.command == "config":
         jarvis_config.jarvis_config()
 
+    elif args.command == "configuration":
+
+        # TTT local run case
+        #
+        conf_usage = "Usage :\n\njarvis configuration run TTT-CONFIGURATION.json [task_1 task_2 ... task_N]\n\n"
+
+        if len(args.arguments) >= 2:
+            if args.arguments[0].strip() == "run":
+                sql_dag_generator.process(args.arguments[1], run_locally=True, arguments=args.arguments)
+            else:
+                print(conf_usage)
+        else:
+            print(conf_usage)
+
     elif args.command == "encrypt":
         if len(args.arguments) > 0:
             jarvis_crypto.encrypt_payload(args.arguments[0])
