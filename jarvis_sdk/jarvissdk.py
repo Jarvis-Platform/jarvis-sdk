@@ -24,7 +24,7 @@ warnings.filterwarnings(
 
 # Globals
 #
-JARVIS_SDK_VERSION="1.1.1"
+JARVIS_SDK_VERSION="1.1.2"
 
 
 

@@ -1062,7 +1062,7 @@ def build_sql_task(payload, env, default_gcp_project_id, default_bq_dataset, def
                             }
                 )
 
-        """ + payload["id"] + """.doc_md = \"\"\"""" + dag_doc + """
+    """ + payload["id"] + """.doc_md = \"\"\"""" + dag_doc + """
 
     # **SQL Query**
 

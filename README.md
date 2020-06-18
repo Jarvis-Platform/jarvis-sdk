@@ -2,6 +2,10 @@
 
 ## Changelog
 
+### Release 1.1.2 : 2020-06-18
+
+* TTT : fixed a regression impacting SQL type tasks.
+
 ### Release 1.1.1 : 2020-05-18
 
 * Added support for ZSH under Max OS X
