@@ -395,7 +395,7 @@ def check_table_to_table(input_configuration):
 
 
 
-def process(args):
+def process(args, jarvis_sdk_version):
 
     print("Jarvis Configuration Manager.")
 
@@ -416,11 +416,11 @@ def process(args):
                 else:
 
                     # Special check for TABLE-TO-TABLE (DAG Generator) configuration
-                    # If so, we need to process the confgiguration file
+                    # If so, we need to process the configuration file
                     #
                     if check_table_to_table(args.arguments[1]) is True:
                         print("Processing table-to-table type configuration ...")
-                        sql_dag_generator.process(args.arguments[1])
+                        sql_dag_generator.process(configuration_file=args.arguments[1], jarvis_sdk_version=jarvis_sdk_version)
                         return True
 
                     # First, check if the configuration is valid

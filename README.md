@@ -2,6 +2,12 @@
 
 ## Changelog
 
+### Release 1.1.3 : 2020-06-18
+
+* Added Notification upon Jarvis SDK new release on PyPi
+* TTT : added "client_type" and "client_version" to the stored configuration
+* TTT : fixed another regression on function call.
+
 ### Release 1.1.2 : 2020-06-18
 
 * TTT : fixed a regression impacting SQL type tasks.

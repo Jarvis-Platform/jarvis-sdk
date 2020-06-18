@@ -9,7 +9,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="jarvis-sdk",
-    version="1.1.2",
+    version="1.1.3",
     packages=['jarvis_sdk'],
     description='JARVIS SDK Python Package',
     long_description=long_description,
@@ -30,7 +30,11 @@ setup(
         'gcloud',
         'sseclient',
         'requests-toolbelt',
-        'google.auth'
+        'google.auth',
+        'semver>=2.10.2',
+        'Jinja2>=2.11.2',
+        'google-cloud-bigquery>=1.25.0',
+        'pkg-info>=0.1.2'
     ],
     keywords=['pip', 'fashiondata'],
     include_package_data=True,

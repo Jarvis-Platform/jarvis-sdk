@@ -584,7 +584,7 @@ def execute_bq_copy_table(  source_gcp_project_id,
                             destination_bq_table,
                             destination_bq_table_date_suffix,
                             destination_bq_table_date_suffix_format,
-                            run_locally,
+                            run_locally=False,
                             **kwargs):
 
 
@@ -1361,7 +1361,7 @@ def build_vm_launcher_task(payload, gcp_project_id, run_locally=False):
     return output_payload
 
 
-def process(configuration_file, run_locally=False, arguments=None):
+def process(configuration_file, run_locally=False, arguments=None, jarvis_sdk_version=None):
 
     # Do we run locally ?
     # We need to check the arguments
@@ -1755,6 +1755,8 @@ with airflow.DAG(
     #
     data["configuration_type"] = "gbq-to-gbq"
     data["configuration_id"] = dag_name
+    data["client_type"] = "jarvis-sdk"
+    data["client_version"] = jarvis_sdk_version
 
     # Process the "run locally" option
     #
