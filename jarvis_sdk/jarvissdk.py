@@ -27,7 +27,7 @@ warnings.filterwarnings(
 
 # Globals
 #
-__version__ = "1.1.3"
+__version__ = "1.1.4"
 JARVIS_SDK_VERSION=__version__
 JARVIS_SDK_NAME="jarvis-sdk"
 

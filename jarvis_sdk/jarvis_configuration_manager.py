@@ -286,11 +286,18 @@ def get_project_profile_from_configuration(input_conf_file=None, jarvis_configur
         return False
 
 
-def deploy_configuration(input_conf_file, project_profile, jarvis_configuration, firebase_user, no_gcp_cf_deploy):
+def deploy_configuration(input_conf_file, project_profile, jarvis_configuration, firebase_user, no_gcp_cf_deploy, jarvis_sdk_version=None):
 
     # Process configuration file
     #
     read_configuration = process_configuration_file(input_conf_file)
+
+    # Tag configuration with :
+    # client_type
+    # client_version
+    #
+    read_configuration["client_type"] = "jarvis-sdk"
+    read_configuration["client_version"] = jarvis_sdk_version
 
     # Do we need to deploy the associated CF ?
     #
@@ -441,7 +448,7 @@ def process(args, jarvis_sdk_version):
                     else:
                         print("\nProject profile used : {}\n".format(project_profile))
 
-                    return deploy_configuration(args.arguments[1], project_profile, jarvis_configuration, firebase_user, args.no_gcp_cf_deploy)
+                    return deploy_configuration(args.arguments[1], project_profile, jarvis_configuration, firebase_user, args.no_gcp_cf_deploy, jarvis_sdk_version=jarvis_sdk_version)
             else:
                 print("Argument unknown." % args.arguments[1])
                 return False

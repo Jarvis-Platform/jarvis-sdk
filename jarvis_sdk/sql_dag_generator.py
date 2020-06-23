@@ -976,7 +976,7 @@ def build_complementary_code():
     return output_payload
 
 
-def build_sql_task(payload, env, default_gcp_project_id, default_bq_dataset, default_write_disposition, global_path, run_locally=False):
+def build_sql_task(payload, env, default_gcp_project_id, default_bq_dataset, default_write_disposition, global_path, run_locally=False, task_id=None):
 
     # Check for overridden values : GCP Project ID, Dataset, ...
     #
@@ -1027,7 +1027,11 @@ def build_sql_task(payload, env, default_gcp_project_id, default_bq_dataset, def
 
     if run_locally is True:
 
-        output_payload = """    execute_gbq(sql_id = \"""" + payload["id"] + """\",
+        output_payload = """def """ + task_id + """():
+
+    logging.info("\\n\\nExecuting task with id : {}\\n".format(\"""" + task_id + """\"))
+
+    execute_gbq(sql_id = \"""" + payload["id"] + """\",
         env = \"""" + env + """\",
         dag_name = "TEST",
         gcp_project_id = \"""" + gcp_project_id + """\",
@@ -1074,7 +1078,7 @@ def build_sql_task(payload, env, default_gcp_project_id, default_bq_dataset, def
     return output_payload
 
 
-def build_copy_bq_table_task(payload, default_gcp_project_id, default_bq_dataset, run_locally=False):
+def build_copy_bq_table_task(payload, default_gcp_project_id, default_bq_dataset, run_locally=False, task_id=None):
 
     # Check for overridden values : GCP Project ID, Dataset, ...
     #
@@ -1106,7 +1110,11 @@ def build_copy_bq_table_task(payload, default_gcp_project_id, default_bq_dataset
 
     if run_locally is True:
 
-        output_payload += """    execute_bq_copy_table(source_gcp_project_id = \"""" + payload["source_gcp_project_id"].strip() + """\",
+        output_payload += """def """ + task_id + """():
+
+    logging.info("\\n\\nExecuting task with id : {}\\n".format(\"""" + task_id + """\"))
+
+    execute_bq_copy_table(source_gcp_project_id = \"""" + payload["source_gcp_project_id"].strip() + """\",
         source_bq_dataset = \"""" + payload["source_bq_dataset"].strip() + """\",
         source_bq_table = \"""" + payload["source_bq_table"].strip() + """\",
         destination_gcp_project_id = \"""" + gcp_project_id.strip() + """\",
@@ -1142,7 +1150,7 @@ def build_copy_bq_table_task(payload, default_gcp_project_id, default_bq_dataset
     return output_payload
 
 
-def build_create_bq_table_task(payload, default_gcp_project_id, default_bq_dataset, global_path, run_locally=False):
+def build_create_bq_table_task(payload, default_gcp_project_id, default_bq_dataset, global_path, run_locally=False, task_id=None):
 
     # Prepare output value
     output_payload = ""
@@ -1257,7 +1265,11 @@ def build_create_bq_table_task(payload, default_gcp_project_id, default_bq_datas
 
     if run_locally is True:
 
-        output_payload += """    execute_bq_create_table(gcp_project_id = \"""" + gcp_project_id + """\",
+        output_payload += """def """ + task_id + """():
+
+    logging.info("\\n\\nExecuting task with id : {}\\n".format(\"""" + task_id + """\"))
+
+    execute_bq_create_table(gcp_project_id = \"""" + gcp_project_id + """\",
         force_delete = """ + str(force_delete) + """,
         bq_dataset = \"""" + bq_dataset + """\",
         bq_table = \"""" + payload["bq_table"].strip() + """\",
@@ -1298,7 +1310,7 @@ def build_create_bq_table_task(payload, default_gcp_project_id, default_bq_datas
     return output_payload
 
 
-def build_vm_launcher_task(payload, gcp_project_id, run_locally=False):
+def build_vm_launcher_task(payload, gcp_project_id, run_locally=False, task_id=None):
 
     # Infos
     #
@@ -1361,13 +1373,13 @@ def build_vm_launcher_task(payload, gcp_project_id, run_locally=False):
     return output_payload
 
 
-def process(configuration_file, run_locally=False, arguments=None, jarvis_sdk_version=None):
+def build_python_script(configuration_file, arguments=None, run_locally=False):
 
     # Do we run locally ?
     # We need to check the arguments
     #
-    if run_locally is True:
-        local_tasks = []
+    local_tasks = []
+    if (run_locally is True) and (arguments is not None):
 
         index = 2
         while index < len(arguments):
@@ -1522,28 +1534,9 @@ with airflow.DAG(
     #
 """
 
-    # Add "main" for local execution
-    #
-    if run_locally is True:
-
-        output_payload += """if __name__ == \"__main__\":
-
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    root.addHandler(handler)
-
-    warnings.filterwarnings("ignore", "Your application has authenticated using end user credentials")
-
-"""
-    # In the case we run locally and yhe user asked for specific tasks,
+    # In the case we run locally and the user asked for specific tasks,
     # we need to filter out which task to process
     #
-
     # First, we make a copy of the original tasks
     #
     tasks_to_process = copy.deepcopy(json_payload["workflow"])
@@ -1578,9 +1571,9 @@ with airflow.DAG(
 
     # Process all the tasks
     #
-    # for item in json_payload["workflow"]:
+    for item in json_payload["workflow"]:
     #
-    for item in tasks_to_process:
+    #for item in tasks_to_process:
 
         generated_code = ""
 
@@ -1595,29 +1588,59 @@ with airflow.DAG(
 
         if task_type == "copy_gbq_table":
             generated_code = build_copy_bq_table_task(
-                item, default_gcp_project_id, default_bq_dataset, run_locally=run_locally)
+                item, default_gcp_project_id, default_bq_dataset, run_locally=run_locally, task_id=item['id'])
 
         elif task_type == "create_gbq_table":
             generated_code = build_create_bq_table_task(
-                item, default_gcp_project_id, default_bq_dataset, global_path, run_locally=run_locally)
+                item, default_gcp_project_id, default_bq_dataset, global_path, run_locally=run_locally, task_id=item['id'])
 
             if generated_code is False:
                 return False
 
         elif task_type == "vm_launcher":
-            generated_code = build_vm_launcher_task(item, default_gcp_project_id, run_locally=run_locally)
+            generated_code = build_vm_launcher_task(item, default_gcp_project_id, run_locally=run_locally, task_id=item['id'])
 
         else:
             generated_code = build_sql_task(
-                item, environment, default_gcp_project_id, default_bq_dataset, default_write_disposition, global_path, run_locally=run_locally)
+                item, environment, default_gcp_project_id, default_bq_dataset, default_write_disposition, global_path, run_locally=run_locally, task_id=item['id'])
 
-        # Add the result to the main payload
-        #
-        if run_locally is True:
+        # # Add the result to the main payload
+        # #
+        # if run_locally is True:
             
-            output_payload += """    logging.info("\\n\\nExecuting task with id : {}\\n".format(\"""" + item["id"] + """\"))\n\n"""
+        #     output_payload += """    logging.info("\\n\\nExecuting task with id : {}\\n".format(\"""" + item["id"] + """\"))\n\n"""
 
         output_payload += generated_code + "\n"
+
+
+    # Add "main" for local execution
+    #
+    if run_locally is True:
+
+        output_payload += """if __name__ == \"__main__\":
+
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    root.addHandler(handler)
+
+    warnings.filterwarnings("ignore", "Your application has authenticated using end user credentials")
+    
+"""
+
+    # Local execution
+    # Add "tasks to process" only to the "main"
+    #
+    if run_locally is True:
+
+        for task in tasks_to_process:
+
+            output_payload += """    """ + task["id"] + """()\n"""
+
 
     # Add "initialize" function
     # Add PubSub logging
@@ -1650,8 +1673,23 @@ with airflow.DAG(
             output_payload += """    """ + \
                 item["id"] + """ >> send_dag_infos_to_pubsub_failed\n\r"""
 
-    collection = "gbq-to-gbq-conf"
-    doc_id = dag_name
+    return output_payload, json_payload, dag_name, environment
+
+
+def process(configuration_file, run_locally=False, arguments=None, jarvis_sdk_version=None):
+
+    # Force local generation
+    #
+    output_payload, json_payload, dag_name, environment = build_python_script(configuration_file, arguments=None, run_locally=True)
+    with open("test_forced.py", "w") as outfile:
+        outfile.write(output_payload)
+
+    # Generate python script
+    #
+    output_payload, json_payload, dag_name, environment = build_python_script(configuration_file, arguments=arguments, run_locally=run_locally)
+
+    # collection = "gbq-to-gbq-conf"
+    # doc_id = dag_name
 
     data = {}
     sql_data = {}
@@ -1772,12 +1810,11 @@ with airflow.DAG(
 
             # Paste the file
             #
-            # with open("test.py", "w") as outfile:
-            #    outfile.write(output_payload)
+            with open("test.py", "w") as outfile:
+               outfile.write(output_payload)
 
             with open(tmp_file_path, "w") as outfile:
             
-
                 outfile.write(output_payload)
 
                 print("\n\nThe TTT configuration will now run locally...\n\n")
