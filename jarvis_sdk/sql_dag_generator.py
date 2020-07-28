@@ -33,6 +33,7 @@ import re
 import sys
 import tempfile
 import copy
+from subprocess import Popen, PIPE, STDOUT
 
 from jarvis_sdk import jarvis_config
 from jarvis_sdk import jarvis_auth
@@ -1680,9 +1681,7 @@ def process(configuration_file, run_locally=False, arguments=None, jarvis_sdk_ve
 
     # Force local generation
     #
-    output_payload, json_payload, dag_name, environment = build_python_script(configuration_file, arguments=None, run_locally=True)
-    with open("test_forced.py", "w") as outfile:
-        outfile.write(output_payload)
+    output_payload_forced, json_payload, dag_name, environment = build_python_script(configuration_file, arguments=None, run_locally=True)
 
     # Generate python script
     #
@@ -1806,16 +1805,11 @@ def process(configuration_file, run_locally=False, arguments=None, jarvis_sdk_ve
 
             print(tmpdirname)
 
-            tmp_file_path = tmpdirname + "test.py"
-
-            # Paste the file
-            #
-            with open("test.py", "w") as outfile:
-               outfile.write(output_payload)
+            tmp_file_path = tmpdirname + dag_name + ".py"
 
             with open(tmp_file_path, "w") as outfile:
             
-                outfile.write(output_payload)
+                outfile.write(output_payload_forced)
 
                 print("\n\nThe TTT configuration will now run locally...\n\n")
 
@@ -1826,7 +1820,14 @@ def process(configuration_file, run_locally=False, arguments=None, jarvis_sdk_ve
 
                 # Execute the file
                 #
-                os.system(python_executable + " " + tmp_file_path + " 1")
+                command = python_executable + " " + tmp_file_path
+                p = Popen(command, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT, close_fds=True, text=True)
+
+                # Get the logs
+                #
+                for line in p.stdout.readlines():
+                    print(line, end="")
+
 
         return
 
@@ -1917,6 +1918,12 @@ def process(configuration_file, run_locally=False, arguments=None, jarvis_sdk_ve
     encoded_payload = base64.b64encode(pickled_payload)
     encoded_payload = str(encoded_payload, "utf-8")
 
+    # Process LOCAL payload
+    #
+    pickled_payload = pickle.dumps(output_payload_forced)
+    encoded_payload_forced = base64.b64encode(pickled_payload)
+    encoded_payload_forced = str(encoded_payload_forced, "utf-8")
+
     # Call API
     #
     try:
@@ -1931,8 +1938,14 @@ def process(configuration_file, run_locally=False, arguments=None, jarvis_sdk_ve
                     "name" : dag_name + ".py",
                     "data" : encoded_payload
                 },
+                "python_script" : {
+                    "name" : dag_name + ".py",
+                    "data" : encoded_payload_forced
+                },
                 "project_profile": project_profile,
-                "uid" : firebase_user["userId"],
+                "uid": firebase_user["userId"],
+                "client_type": "jarvis-sdk",
+                "client_version": jarvis_sdk_version
             }
         }
         headers = {
@@ -1942,8 +1955,7 @@ def process(configuration_file, run_locally=False, arguments=None, jarvis_sdk_ve
         r = requests.put(url, headers=headers, data=json.dumps(payload), verify=jarvis_configuration["perform_ssl_verification"])
 
         if r.status_code != 200:
-            print("\nError : %s\n" % str(r.content, "utf-8"))
-            print(r.json())
+            print("\nERROR : %s\n" % str(r.content, "utf-8"))
             return False
         else:
             response = r.json()

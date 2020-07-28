@@ -27,8 +27,7 @@ warnings.filterwarnings(
 
 # Globals
 #
-__version__ = "1.1.4"
-JARVIS_SDK_VERSION=__version__
+__version__ = "1.1.5"
 JARVIS_SDK_NAME="jarvis-sdk"
 
 
@@ -37,7 +36,7 @@ def display_jarvis_header():
 
     print("")
     print("JARVIS SDK")
-    print("Version : " + JARVIS_SDK_VERSION)
+    print("Version : " + __version__)
     print("")
 
 
@@ -86,7 +85,7 @@ def main():
 
         if len(args.arguments) >= 2:
             if args.arguments[0].strip() == "run":
-                sql_dag_generator.process(configuration_file=args.arguments[1], run_locally=True, arguments=args.arguments, jarvis_sdk_version=JARVIS_SDK_VERSION)
+                sql_dag_generator.process(configuration_file=args.arguments[1], run_locally=True, arguments=args.arguments, jarvis_sdk_version=__version__)
             else:
                 print(conf_usage)
         else:
@@ -109,17 +108,17 @@ def main():
     elif args.command == "create":
         if len(args.arguments) > 0:
             if (args.arguments)[0] == "configuration":
-                jarvis_configuration_manager.process(args, jarvis_sdk_version=JARVIS_SDK_VERSION)
+                jarvis_configuration_manager.process(args, jarvis_sdk_version=__version__)
 
     elif args.command == "check":
         if len(args.arguments) > 0:
             if (args.arguments)[0] == "configuration":
-                jarvis_configuration_manager.process(args, jarvis_sdk_version=JARVIS_SDK_VERSION)
+                jarvis_configuration_manager.process(args, jarvis_sdk_version=__version__)
 
     elif args.command == "deploy":
         if len(args.arguments) > 0:
             if (args.arguments)[0] == "configuration":
-                jarvis_configuration_manager.process(args, jarvis_sdk_version=JARVIS_SDK_VERSION)
+                jarvis_configuration_manager.process(args, jarvis_sdk_version=__version__)
             if (args.arguments)[0] == "gcp-cloud-function":
                 jarvis_gcp_cf_manager.process(args)
     

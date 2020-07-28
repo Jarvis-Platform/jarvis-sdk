@@ -2,7 +2,12 @@
 
 ## Changelog
 
-### Release 1.1.4 : 2020-xx-yy
+### Release 1.1.5 : 2020-xx-yy
+
+* Updated "setup.py"
+* xyz
+
+### Release 1.1.4 : 2020-07-03
 
 * Added Notification upon Jarvis SDK new release on PyPi
 * TTT : added "client_type" and "client_version" to the stored configuration
