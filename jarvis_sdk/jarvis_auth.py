@@ -8,6 +8,7 @@ import getpass
 from firebase import Firebase
 
 from jarvis_sdk import jarvis_config
+from jarvis_sdk import jarvis_project
 
 
 def get_firebase_configuration(read_configuration):
@@ -71,11 +72,19 @@ def login():
         print("Please run \"jarvis config\" to make sure Jarvis SDK is properly configured.")
         return False
 
+    # Select a project
+    #
+    project = jarvis_project.select_project(configuration=read_configuration)
+    if project is None:
+        print("Error while selecting a Jarvis Master Project. Please retry.")
+        return False
+
     # Check if we have Jarvis Firebase information
     #
-    jarvis_firebase_config = get_firebase_configuration(read_configuration)
+    jarvis_firebase_config = get_firebase_configuration(read_configuration["jarvis_master_projects"][project])
     if jarvis_firebase_config is None:
         return False
+    print("Jarvis Master Project selected : {}".format(project))
 
     # Instantiate service
     #
@@ -92,10 +101,10 @@ def login():
     # Ask user info to authenticate through firebase
     #
     print("Please provide your email address. Default -> " +
-            read_configuration["user_email"] + " : ", end='', flush=True)
+            read_configuration["jarvis_master_projects"][project]["user_email"] + " : ", end='', flush=True)
     user_email = input().strip()
     if not user_email:
-        user_email = read_configuration["user_email"]
+        user_email = read_configuration["jarvis_master_projects"][project]["user_email"]
 
     user_password = getpass.getpass("Please provide your password : ")
 
@@ -158,7 +167,7 @@ def login():
     # Save user in configuration file
     #
     print("Saving configuration ...")
-    read_configuration["firebase_user"] = firebase_user
+    read_configuration["jarvis_master_projects"][project]["firebase_user"] = firebase_user
     jarvis_config.set_jarvis_configuration_file(read_configuration)
 
     return True

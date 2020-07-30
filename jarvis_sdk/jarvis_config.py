@@ -16,6 +16,7 @@ from jarvis_sdk import jarvis_misc
 #
 _jarvis_rc_file_ = "jarvisrc"
 _jarvis_configuration_file_ = "jarvis-configuration.json"
+
 _jarvis_default_parameters_ = {
     "user_email": {
         "name": "Your email address",
@@ -108,24 +109,41 @@ def get_jarvis_configuration_file(create_if_not_exists=False):
         print("Error during configuration reading/parsing.")
         print(ex)
 
-    # Check for non-present values
+    # Set default values
     #
-    if "perform_ssl_verification" not in read_configuration:
-        read_configuration["perform_ssl_verification"] = False
+    try:
+        read_configuration["common"]
+    except KeyError:
+        read_configuration["common"] = {}
 
-    if "client_ssl_certificate" not in read_configuration:
-        read_configuration["client_ssl_certificate"] = ""
+    try:
+        read_configuration["jarvis_master_projects"]
+    except KeyError:
+        read_configuration["jarvis_master_projects"] = {}
+
+    try:
+        read_configuration["common"]["perform_ssl_verification"]
+    except KeyError:
+        read_configuration["common"]["perform_ssl_verification"] = True
+
+    try:
+        read_configuration["common"]["client_ssl_certificate"]
+    except KeyError:
+        read_configuration["common"]["client_ssl_certificate"] = ""
+
+    try:
+        read_configuration["common"]["jarvis_master_project_id"]
+    except KeyError:
+        read_configuration["common"]["jarvis_master_project_id"] = ""
 
     # Make sur those variables are set
     #
     # SSL_CERT_FILE
     #
-    if read_configuration["client_ssl_certificate"] is not None:
-        os.environ["SSL_CERT_FILE"] = read_configuration["client_ssl_certificate"]
+    if read_configuration["common"]["client_ssl_certificate"] is not None:
+        os.environ["SSL_CERT_FILE"] = read_configuration["common"]["client_ssl_certificate"]
     else:
         del os.environ["SSL_CERT_FILE"]
-
-    print("SSL Cert. : {}".format(os.environ["SSL_CERT_FILE"]))
 
     return read_configuration
 
@@ -205,7 +223,15 @@ def process_jarvis_home_env_variable(host_system):
         if host_system == "Linux":
             user_rc_file = ".bashrc"
         elif host_system == "Darwin":
-            user_rc_file = ".bash_profile"
+
+            # Check the SHELL used
+            #
+            user_rc_file = ".bashrc"
+            try:
+                if "zsh" in os.environ["SHELL"]:
+                    user_rc_file = ".zshrc"
+            except Exception:
+                print("Shell does not seem to be ZSH.")
 
         # Home directory
         #
@@ -262,38 +288,22 @@ def process_configuration_file(host_system):
     if read_configuration is None:
         return False
 
-    # Going through default parameters
+    # Process default user email address
     #
-    print()
-    for key in _jarvis_default_parameters_.keys():
+    try:
+        user_email = read_configuration["common"]["user_email"]
+    except KeyError:
+        user_email = None
 
-        built_message = "Please provide " + \
-            _jarvis_default_parameters_[key]["name"] + \
-            ". Actual/default value => %s : "
+    print("Please provide the default user email. Current value => {} : ".format(user_email), end='', flush=True)
+    user_value = input()
 
-        actual_or_default_value = None
-        value_if_empty = None
-        try:
-            actual_or_default_value = read_configuration[key]
-            value_if_empty = read_configuration[key]
-        except KeyError:
-            actual_or_default_value = _jarvis_default_parameters_[key]["value"]
-            value_if_empty = _jarvis_default_parameters_[key]["value"]
-
-        # Display request to the user
+    if not user_value:
+        # If the user just hit enter, we'll use the actual/default value
         #
-        print(built_message % actual_or_default_value, end='', flush=True)
-
-        # Get user value
-        #
-        user_value = input()
-
-        if not user_value:
-            # If the user just hit enter, we'll use the actual/default value
-            #
-            read_configuration[key] = value_if_empty
-        else:
-            read_configuration[key] = user_value
+        read_configuration["common"]["user_email"] = user_email
+    else:
+        read_configuration["common"]["user_email"] = user_value
 
     # Process SSL Bypass
     #
@@ -371,7 +381,7 @@ def jarvis_config():
     # Step 5 : create/update configuration file
     #
     if process_configuration_file(host_system) is False:
-        print("Error while creating/upgrading configuration file.")
+        print("ERROR while creating/upgrading configuration file.")
 
     # Final step
     #
