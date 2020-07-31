@@ -501,7 +501,6 @@ def execute_gbq(sql_id, env, dag_name, gcp_project_id, bq_dataset, table_name, w
         gbq_client          = bigquery.Client(project=gcp_project_id, credentials=credentials)
 
     else:
-
         gbq_client          = bigquery.Client(project=gcp_project_id)
 
     dataset_id          = bq_dataset

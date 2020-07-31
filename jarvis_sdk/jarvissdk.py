@@ -62,7 +62,7 @@ def main():
 
     # Display Jarvis header
     #
-    display_jarvis_header()  
+    display_jarvis_header()
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
